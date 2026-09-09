@@ -121,8 +121,12 @@ class RegimeAwareStrategy:
                   df: pd.DataFrame,
                   strategy_map: dict[str, list[str]] | None = None,
                   params_map: dict[str, dict] | None = None,
-                  regimes: pd.Series | None = None):
+                  regimes: pd.Series | None = None,
+                  params: dict | None = None):  # alias for params_map (uniform API)
         STRATEGY_REGISTRY = _get_registry()
+        # Support `params` as alias for `params_map` for API consistency with other strategies
+        if params is not None and params_map is None:
+            params_map = params
         self.df = df
         if regimes is None:
             self.regimes = detect_regimes(df)
@@ -185,21 +189,45 @@ def regime_performance_summary(df: pd.DataFrame, trades: pd.DataFrame) -> pd.Dat
 
     Uses entry time to determine regime for each trade.
     Returns DataFrame with columns: regime, n_trades, win_rate, net_pnl, avg_pnl.
+
+    Handles both 'entry_time' (our format) and 'Entry Timestamp' (vectorbt format).
     """
-    if trades.empty or "entry_time" not in trades.columns:
+    if trades.empty:
+        return pd.DataFrame()
+    # Find the entry time column
+    entry_col = None
+    for c in ("entry_time", "Entry Timestamp", "entry_bar", "Entry Bar"):
+        if c in trades.columns:
+            entry_col = c
+            break
+    if entry_col is None:
         return pd.DataFrame()
     # Detect regimes
     regimes = detect_regimes(df)
     trades = trades.copy()
-    # Map each trade's entry time to nearest bar
-    nearest_idx = df.index.get_indexer(trades["entry_time"], method="nearest")
-    trades["regime"] = [regimes.iloc[i] if i < len(regimes) else "unknown"
+    # Get entry timestamps
+    if entry_col == "entry_bar":
+        # Convert bar index to timestamp
+        entry_times = pd.to_datetime(
+            [df.index[int(i)] if pd.notna(i) and int(i) < len(df.index) else pd.NaT
+             for i in trades[entry_col]], errors="coerce")
+    else:
+        entry_times = pd.to_datetime(trades[entry_col], errors="coerce")
+    nearest_idx = df.index.get_indexer(entry_times, method="nearest")
+    trades["regime"] = [regimes.iloc[i] if 0 <= i < len(regimes) else "unknown"
                           for i in nearest_idx]
-    # Aggregate
+    # Find the pnl column (case-insensitive)
+    pnl_col = None
+    for c in trades.columns:
+        if c.lower() in ("pnl", "profit"):
+            pnl_col = c
+            break
+    if pnl_col is None:
+        return pd.DataFrame()
     summary = trades.groupby("regime").agg(
-        n_trades=("pnl", "size"),
-        win_rate=("pnl", lambda x: (x > 0).mean()),
-        net_pnl=("pnl", "sum"),
-        avg_pnl=("pnl", "mean"),
+        n_trades=(pnl_col, "size"),
+        win_rate=(pnl_col, lambda x: (x > 0).mean()),
+        net_pnl=(pnl_col, "sum"),
+        avg_pnl=(pnl_col, "mean"),
     ).reset_index()
     return summary

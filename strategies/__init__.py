@@ -9,6 +9,13 @@ from .mtf_stoch import QuadStochStrategy, resample_htf
 from core.universal_strategy import UniversalStrategy
 from core.regime import RegimeAwareStrategy, detect_regimes, regime_performance_summary
 
+__all__ = [
+    "AC_AO_Strategy", "ADX_Strategy", "DeM_Strategy", "FBB_Strategy",
+    "MFI_Strategy", "MS_Strategy", "QuadStochStrategy",
+    "UniversalStrategy", "RegimeAwareStrategy",
+    "STRATEGY_REGISTRY",
+]
+
 STRATEGY_REGISTRY = {
     "ac_ao": AC_AO_Strategy,
     "adx": ADX_Strategy,

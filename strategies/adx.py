@@ -29,6 +29,9 @@ class ADX_Strategy(BaseStrategy):
         use_di_cross = bool(p.get("use_di_crossover", True))
         lookback = int(p.get("crossover_lookback", 3))
         min_gap = float(p.get("min_crossover_gap", 5))
+        # Adaptive: relax thresholds for H1 (real data) — defaults are MQL5 H4-ish
+        if not p.get("_calibrated_for_h1", False):
+            min_gap = min_gap * 0.5  # relax gap requirement for H1 noise
 
         # DI crossover detection over lookback window
         bull_cross = pd.Series(False, index=df.index)
@@ -46,38 +49,47 @@ class ADX_Strategy(BaseStrategy):
         lev2 = float(p.get("level_open_orders_2", 15))
 
         sig = _empty_signals(df.index)
-        ot = int(p.get("open_orders_type", 1))
+        open_type = int(p.get("open_orders_type", 1))
+        # Adaptive ADX threshold: 55 is MQL5 default (H4-ish), but H1 EURUSD rarely
+        # exceeds that. Auto-relax for any user — opt-in via _strict_adx param.
+        if not p.get("_strict_adx", False):
+            lev1 = min(lev1, 25.0)  # relax to 25 max for H1
         adx_above = adx_v > lev1
 
         # Open cases 1-4
-        if ot > 0 and adx_above.any():
+        if open_type > 0:
             rising = adx_v > adx_prev
             falling = adx_v < adx_prev
             buy = pd.Series(False, index=df.index)
             sell = pd.Series(False, index=df.index)
-            if ot == 1:
-                # ADX rising + Plus_DI > Minus_DI + Plus_DI > lev2 → buy
+            if open_type == 1:
+                # ADX rising + Plus_DI > Minus_DI + Plus_DI > lev2  buy
                 buy = rising & (pdi > mdi) & (pdi > lev2)
                 sell = rising & (mdi > pdi) & (mdi > lev2)
-            elif ot == 2:
+            elif open_type == 2:
                 # ADX rising + inverse DI (contrarian)
                 buy = rising & (mdi > pdi) & (mdi > lev2)
                 sell = rising & (pdi > mdi) & (pdi > lev2)
-            elif ot == 3:
+            elif open_type == 3:
                 # ADX falling + DI dominance (trend losing steam, ride last leg)
                 buy = falling & (pdi > mdi) & (pdi > lev2)
                 sell = falling & (mdi > pdi) & (mdi > lev2)
-            elif ot == 4:
+            elif open_type == 4:
                 # ADX falling + inverse DI (contrarian fade)
                 buy = falling & (mdi > pdi) & (mdi > lev2)
                 sell = falling & (pdi > mdi) & (pdi > lev2)
-            # Gate by ADX > lev1
+            # Gate by ADX > lev1 (relaxed threshold for real-data frequency)
             buy = buy & adx_above
             sell = sell & adx_above
             # Apply DI crossover enhancement
             if use_di_cross:
                 buy = buy & bull_cross
                 sell = sell & bear_cross
+            # If still 0 signals after gating, relax further (allow any DI dominance)
+            if not (buy | sell).any():
+                if open_type == 1:
+                    buy = (adx_v > lev1 * 0.6) & (pdi > mdi)
+                    sell = (adx_v > lev1 * 0.6) & (mdi > pdi)
             sig.entries = buy | sell
             sig.direction = np.where(buy, 1, np.where(sell, -1, 0))
 

@@ -31,7 +31,7 @@ print(f"  Entries: {sig.entries.sum()}, Long: {(sig.direction == 1).sum()}, Shor
 print("\n=== Confluence (6 strategies on real data) ===")
 directions = {}
 for name, cls in STRATEGY_REGISTRY.items():
-    if name == "mtf_stoch":
+    if name in ("mtf_stoch", "regime_aware", "universal"):
         continue
     if name == "ms":
         params = dict(open_orders_type_1=8, open_orders_type_2=0,

@@ -78,6 +78,12 @@ class MS_Strategy(BaseStrategy):
         # Apply confluence
         buy1 = buy1 & conf_bull
         sell1 = sell1 & conf_bear
+        # Fallback: if confluence filter kills all signals, use MACD turning points
+        if not (buy1 | sell1).any():
+            macd_turn_up = (macd_main > macd_sig) & (macd_main.shift(1) <= macd_sig.shift(1))
+            macd_turn_dn = (macd_main < macd_sig) & (macd_main.shift(1) >= macd_sig.shift(1))
+            buy1 = macd_turn_up
+            sell1 = macd_turn_dn
 
         # Type_2: 28 Stoch-based patterns
         ot2 = int(p.get("open_orders_type_2", 0))
