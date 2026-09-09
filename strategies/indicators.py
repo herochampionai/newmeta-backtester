@@ -135,3 +135,55 @@ def linear_regression_slope(series: pd.Series, lookback: int = 5) -> pd.Series:
     for i in range(n - 1, len(vals)):
         out[i] = _slope(vals[i - n + 1:i + 1])
     return pd.Series(out, index=series.index)
+
+
+def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """On-Balance Volume. Matches MT5 iOBV."""
+    direction = np.where(close > close.shift(1), 1.0,
+                         np.where(close < close.shift(1), -1.0, 0.0))
+    return pd.Series(direction * volume.fillna(0).values,
+                     index=close.index).cumsum()
+
+
+def cvd(close: pd.Series, high: pd.Series, low: pd.Series,
+        volume: pd.Series) -> pd.Series:
+    """Cumulative Volume Delta (proxy).
+
+    MT5 has no native CVD; we approximate with close-location-value:
+      clv = ((close-low) - (high-close)) / (high-low)
+      flow = clv * volume
+    Cumulative sum = CVD proxy. Rising CVD = buyers aggressive.
+    """
+    rng = (high - low).replace(0, np.nan)
+    clv = ((close - low) - (high - close)) / rng
+    clv = clv.fillna(0.0)
+    flow = clv * volume.fillna(0)
+    return flow.cumsum()
+
+
+def wma(series: pd.Series, period: int = 5) -> pd.Series:
+    """Weighted moving average (linear weights 1..n)."""
+    w = np.arange(1, period + 1, dtype=float)
+    return series.rolling(period, min_periods=1).apply(
+        lambda x: float(np.dot(x, w[-len(x):]) / w[-len(x):].sum()),
+        raw=True)
+
+
+def volume_rising(close: pd.Series, high: pd.Series, low: pd.Series,
+                  volume: pd.Series, wma_period: int = 5
+                  ) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Very permissive OBV/CVD rising filter.
+
+    Returns (obv_rising, cvd_rising, pass_filter) where
+      obv_rising = WMA5(OBV) rising
+      cvd_rising = WMA5(CVD) rising
+      pass_filter = obv_rising | cvd_rising
+    Only blocks when BOTH are falling.
+    """
+    o = obv(close, volume)
+    c = cvd(close, high, low, volume)
+    ow = wma(o, wma_period)
+    cw = wma(c, wma_period)
+    obv_up = ow > ow.shift(1)
+    cvd_up = cw > cw.shift(1)
+    return obv_up.fillna(False), cvd_up.fillna(False), (obv_up | cvd_up).fillna(True)
