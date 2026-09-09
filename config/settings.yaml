@@ -1,0 +1,30 @@
+# User preferences for the backtest harness
+# Override via env vars (MT5_TERMINAL_PATH, MT5_DEFAULT_SYMBOL) or via UI in app.py
+
+# Default MT5 terminal — the harness will use this first
+# Override with env var: MT5_TERMINAL_PATH
+mt5_terminal: "D:/MT5_EuroPrinter/terminal64.exe"
+
+# Default broker symbol
+default_symbol: "EURUSD"
+
+# Default timeframe
+default_timeframe: "H1"
+
+# Default broker defaults for commission/slippage realism
+commission_pips: 0.7        # round-turn commission in pips
+slippage_pips: 0.3          # typical slippage
+variable_spread: true       # if true, simulate variable spread from real tick data
+max_spread_pips: 5.0        # reject trades above this spread
+
+# Capital
+initial_cash: 10000
+leverage: 30
+
+# Caching
+cache_dir: "./data/cache"
+reuse_cache: true
+
+# Performance
+fast_mode: true             # if true, use OHLC bars (fast); if false, request real ticks
+n_jobs: -1                  # -1 = all cores
