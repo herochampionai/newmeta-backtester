@@ -1,14 +1,16 @@
-"""FBB strategy — Bollinger Bands + Force Index (Force Index used as Type_2 oscillator).
+"""FBB strategy — BREAKOUT ONLY + Force Index.
 
-Two open types:
-  Type_1 (boundary cross): close back inside the band after a poke
-  Type_2 (oscillator): Force Index scaled + level threshold
+Per user spec: FBB plays breakout/breakdown only, NOT reversals.
+  Type_1: BB breakout/breakdown (case 2)
+  Type_2: Force Index oscillator (case 8)
 
-Default config (matches MQL5 multi_strat_newmeta.mq5):
-  FBB_OpenOrdersType_1 = 1 (close-back-inside)
-  FBB_OpenOrdersType_2 = 8 (oscillator pattern)
-  FBB_LevelOpenOrders_1 = 0.0  (always pass distance check)
-  FBB_LevelOpenOrders_2 = 50.0
+Mean-reversion (close-back-inside + RSI divergence) lives in bb_rsi.py.
+
+Default config (breakout):
+  open_orders_type_1 = 2 (breakout)
+  open_orders_type_2 = 8 (Force Index oscillator)
+  level_open_orders_1 = 0.0  (always pass distance check)
+  level_open_orders_2 = 50.0
 """
 from __future__ import annotations
 import numpy as np
@@ -37,7 +39,7 @@ class FBB_Strategy(BaseStrategy):
         force_prev = force.shift(1)
 
         sig = _empty_signals(df.index)
-        ot1 = int(p.get("open_orders_type_1", 1))
+        ot1 = int(p.get("open_orders_type_1", 2))
         ot2 = int(p.get("open_orders_type_2", 8))
         lev1 = float(p.get("level_open_orders_1", 0.0))   # distance band check (pips)
         lev2 = float(p.get("level_open_orders_2", 50.0))  # oscillator level
@@ -50,15 +52,13 @@ class FBB_Strategy(BaseStrategy):
         prev_lower = lo.shift(1)
         prev_mid = mid.shift(1)
 
-        # === Type_1: Close-back-inside the band ===
+        # === Type_1: BB breakout / breakdown ONLY ===
         buy = pd.Series(False, index=df.index)
         sell = pd.Series(False, index=df.index)
         if ot1 == 1:
-            # Buy: prev bar poked below lower band (Low < prev_lower) AND
-            #      current bar closed inside band (Close > lower band)
+            # LEGACY reversal (close-back-inside) — kept for compat, not recommended.
+            # Use bb_rsi for reversals instead.
             buy = (prev_low < prev_lower) & (df["close"] > lo)
-            # Sell: prev bar poked above upper band (High > prev_upper) AND
-            #       current bar closed inside band (Close < upper band)
             sell = (prev_high > prev_upper) & (df["close"] < up)
         elif ot1 == 2:
             # Breakout: prev bar above upper → buy, below lower → sell
