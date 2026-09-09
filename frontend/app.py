@@ -97,6 +97,56 @@ def equity_chart(equity: pd.Series, drawdown: pd.Series) -> go.Figure:
     return fig
 
 
+def cumulative_pnl_chart(equity: pd.Series, init_cash: float) -> go.Figure:
+    """Cumulative P&L line chart. Shows $ profit/loss over time, color-coded."""
+    pnl = equity - init_cash
+    # Color: green where pnl >= 0, red where < 0
+    colors = [PALETTE["success"] if v >= 0 else PALETTE["danger"] for v in pnl.values]
+
+    fig = go.Figure()
+    # Main P&L line
+    fig.add_trace(go.Scatter(
+        x=pnl.index, y=pnl.values, mode="lines",
+        name="Cumulative P&L",
+        line=dict(color=PALETTE["primary"], width=2.5),
+        fill="tozeroy", fillcolor="rgba(0, 212, 170, 0.08)",
+        hovertemplate="<b>%{x}</b><br>P&L: $%{y:.2f}<extra></extra>",
+    ))
+    # Markers colored by sign
+    fig.add_trace(go.Scatter(
+        x=pnl.index, y=pnl.values, mode="markers",
+        marker=dict(color=colors, size=4, line=dict(width=0)),
+        showlegend=False, hoverinfo="skip",
+    ))
+    # Zero line
+    fig.add_hline(y=0, line=dict(color=PALETTE["muted"], width=1, dash="dash"))
+    # Annotate max + min
+    if len(pnl) > 1:
+        max_idx = pnl.idxmax(); min_idx = pnl.idxmin()
+        fig.add_annotation(
+            x=max_idx, y=float(pnl.max()),
+            text=f"Peak: ${pnl.max():.0f}",
+            showarrow=True, arrowhead=2, ax=-40, ay=-30,
+            font=dict(color=PALETTE["success"], size=11),
+        )
+        fig.add_annotation(
+            x=min_idx, y=float(pnl.min()),
+            text=f"Trough: ${pnl.min():.0f}",
+            showarrow=True, arrowhead=2, ax=40, ay=30,
+            font=dict(color=PALETTE["danger"], size=11),
+        )
+    fig.update_layout(
+        template="plotly_dark", paper_bgcolor=PALETTE["bg"],
+        plot_bgcolor=PALETTE["card_bg"], height=380,
+        margin=dict(l=10, r=10, t=10, b=10),
+        font=dict(color=PALETTE["text"]),
+        xaxis=dict(gridcolor=PALETTE["card_border"]),
+        yaxis=dict(title="Cumulative P&L ($)", gridcolor=PALETTE["card_border"],
+                    tickprefix="$", tickformat=",.0f"),
+    )
+    return fig
+
+
 def render_metrics(m: dict, keys_order: list, cols_per_row: int = 5):
     items = [(k, m.get(k)) for k in keys_order if m.get(k) is not None]
     for i in range(0, len(items), cols_per_row):
@@ -243,9 +293,46 @@ with col_drop:
         help="Auto-detects .mq5 (MQL5 EA), .py (Python strategy), .pine (PineScript), .txt (config)",
     )
 with col_status:
-    st.markdown("**Available strategies:**")
-    for n in STRATEGY_REGISTRY.keys():
-        st.code(f"• {n}", language=None)
+    st.markdown("**MT5 MQL5 source files (direct path):**")
+    # Auto-detect MT5 MQL5 paths
+    from tools.mt5_utils import find_metatrader, list_mql5_files
+    mt5_editor = find_metatrader()
+    if mt5_editor:
+        mt5_root = mt5_editor.parent
+        mql5_files = list_mql5_files(mt5_root, extensions=(".mq5",))
+        if mql5_files:
+            file_names = [f.name for f in mql5_files[:30]]
+            selected_mq5 = st.selectbox(
+                f"Found {len(mql5_files)} .mq5 file(s) in {mt5_root / 'MQL5'}",
+                file_names,
+                index=file_names.index("multi_strat_newmeta.mq5")
+                if "multi_strat_newmeta.mq5" in file_names else 0,
+                label_visibility="collapsed",
+            )
+            if selected_mq5:
+                full_path = next(f for f in mql5_files if f.name == selected_mq5)
+                st.caption(f"`{full_path.relative_to(mt5_root.parent) if mt5_root.parent in full_path.parents else full_path}`")
+                col_a, col_b = st.columns(2)
+                if col_a.button("📂 Compile to .ex5", key="compile_mq5", use_container_width=True):
+                    with st.spinner(f"Compiling {selected_mq5}..."):
+                        from tools.mt5_utils import compile_mq5
+                        result = compile_mq5(full_path, mt5_editor)
+                        if result["success"]:
+                            st.success(f"Compiled! .ex5 at: `{result['ex5_path']}`")
+                        else:
+                            st.error("Compile failed:")
+                            for err in result["errors"][:10]:
+                                st.code(err, language="log")
+                            if result.get("log"):
+                                with st.expander("Full log"):
+                                    st.code(result["log"], language="log")
+                if col_b.button("📊 Backtest this", key="backtest_mq5", use_container_width=True):
+                    st.session_state["pending_mq5"] = str(full_path)
+                    st.rerun()
+        else:
+            st.caption(f"No .mq5 files found in {mt5_root / 'MQL5'}")
+    else:
+        st.caption("MetaEditor not found in standard locations")
 
 # === Fetch data ===
 @st.cache_data(show_spinner="Fetching data — live MT5 → Yahoo → cache…")
@@ -391,6 +478,9 @@ if mode == "🚀 Backtest":
         # Equity + DD
         dd = bt["equity"] / bt["equity"].cummax() - 1
         st.plotly_chart(equity_chart(bt["equity"], dd), use_container_width=True)
+        # Cumulative P&L line chart (NEW)
+        st.plotly_chart(cumulative_pnl_chart(bt["equity"], init_cash),
+                         use_container_width=True)
         # Trade log
         if len(bt["trades"]) > 0:
             with st.expander(f"📋 Trades ({len(bt['trades'])})"):
