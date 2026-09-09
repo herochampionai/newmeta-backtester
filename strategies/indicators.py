@@ -187,3 +187,19 @@ def volume_rising(close: pd.Series, high: pd.Series, low: pd.Series,
     obv_up = ow > ow.shift(1)
     cvd_up = cw > cw.shift(1)
     return obv_up.fillna(False), cvd_up.fillna(False), (obv_up | cvd_up).fillna(True)
+
+
+def stc(close: pd.Series, length: int = 12, fast: int = 26, slow: int = 50) -> pd.Series:
+    """Schaff Trend Cycle (double-smoothed, factor 0.5). Port of Pine calcSTC.
+    Returns 0..100 series."""
+    factor = 0.5
+    macd_v = close.ewm(span=fast, adjust=False).mean() - close.ewm(span=slow, adjust=False).mean()
+    lowest = macd_v.rolling(length, min_periods=1).min()
+    highest = macd_v.rolling(length, min_periods=1).max()
+    rng = (highest - lowest).replace(0, np.nan)
+    pct_k = ((macd_v - lowest) / rng * 100).ffill().fillna(50.0)
+    smoothed = pct_k.ewm(alpha=factor, adjust=False).mean()
+    lowest_k = smoothed.rolling(length, min_periods=1).min()
+    highest_k = (smoothed.rolling(length, min_periods=1).max() - lowest_k).replace(0, np.nan)
+    pct_d = ((smoothed - lowest_k) / highest_k * 100).ffill().fillna(50.0)
+    return pct_d.ewm(alpha=factor, adjust=False).mean()

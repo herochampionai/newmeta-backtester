@@ -1,4 +1,4 @@
-from .indicators import ac, ao, adx, mfi, macd, stochastic, bollinger, dem, force_index, linear_regression_slope, rsi, obv, cvd, wma, volume_rising
+from .indicators import ac, ao, adx, mfi, macd, stochastic, bollinger, dem, force_index, linear_regression_slope, rsi, obv, cvd, wma, volume_rising, stc
 from .ac_ao import AC_AO_Strategy
 from .adx import ADX_Strategy
 from .dem import DeM_Strategy
@@ -10,6 +10,7 @@ from .ms import MS_Strategy
 from .mtf_stoch import QuadStochStrategy, resample_htf
 from .quad_stoch import QuadStochSameTF
 from .stoch533_mtf import Stoch533MTF
+from .macd_confluence import MACDConfluenceStrategy
 from core.universal_strategy import UniversalStrategy
 from core.regime import RegimeAwareStrategy, detect_regimes, regime_performance_summary
 
@@ -17,7 +18,7 @@ __all__ = [
     "AC_AO_Strategy", "ADX_Strategy", "DeM_Strategy", "FBB_Strategy",
     "BBRsiStrategy", "TripleRSIStrategy",
     "MFI_Strategy", "MS_Strategy", "QuadStochStrategy",
-    "QuadStochSameTF", "Stoch533MTF",
+    "QuadStochSameTF", "Stoch533MTF", "MACDConfluenceStrategy",
     "UniversalStrategy", "RegimeAwareStrategy",
     "STRATEGY_REGISTRY",
 ]
@@ -34,6 +35,7 @@ STRATEGY_REGISTRY = {
     "mtf_stoch": QuadStochStrategy,
     "quad_stoch": QuadStochSameTF,
     "stoch533_mtf": Stoch533MTF,
+    "macd_confluence": MACDConfluenceStrategy,
     "universal": UniversalStrategy,
     "regime_aware": RegimeAwareStrategy,
 }
