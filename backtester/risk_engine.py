@@ -51,6 +51,30 @@ class RiskConfig:
     contract_size: float = 100_000.0
     init_cash: float = 10_000.0
 
+    @classmethod
+    def profile(cls, name: str, **overrides) -> "RiskConfig":
+        """Profit-mode presets.
+
+        snitch: fast money — TP1 @1.0R, trail starts @1.0R tight (0.7 ATR),
+            no FVG hold, eager scale-out (RSI 65/35).
+        balanced: TP1 @1.5R, trail @1.5R / 1.0 ATR, FVG hold on.
+        wide: runners — TP1 @2.0R, trail @2.0R / 1.5 ATR, FVG hold on,
+            TP2 pushed (4 ATR leg), patient scale-out (RSI 75/25).
+        """
+        presets = {
+            "snitch": dict(tp1_R=1.0, trailing_start_R=1.0, trailing_atr_mult=0.7,
+                           fvg_hold=False, rsi_ob=65.0, rsi_os=35.0,
+                           tp2_fixed_pips=60.0, tp2_atr_mult=2.0),
+            "balanced": dict(),
+            "wide": dict(tp1_R=2.0, trailing_start_R=2.0, trailing_atr_mult=1.5,
+                         fvg_hold=True, rsi_ob=75.0, rsi_os=25.0,
+                         tp2_fixed_pips=150.0, tp2_atr_mult=4.0),
+        }
+        if name not in presets:
+            raise ValueError(f"unknown profit profile: {name}")
+        cfg = cls(**{**presets[name], **overrides})
+        return cfg
+
 
 def _atr(high: pd.Series, low: pd.Series, close: pd.Series, n: int) -> pd.Series:
     tr = pd.concat([(high - low), (high - close.shift()).abs(),

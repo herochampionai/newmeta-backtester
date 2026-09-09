@@ -65,20 +65,28 @@ def confluence(directions: dict[str, pd.Series], weights: dict[str, float] | Non
     return composite, confidence, n_agreeing
 
 
-def resolve_conflicts(directions: dict[str, pd.Series]
+def resolve_conflicts(directions: dict[str, pd.Series],
+                      min_votes: int = 1,
+                      tie_break: str = "reject",
+                      priority: list[str] | None = None
                       ) -> tuple[pd.Series, pd.Series, dict]:
     """Majority-vote conflict rule (user spec):
 
     - Only buys (even a single one) → BUY. Only sells → SELL.
     - Buy(s) vs sell(s) on the same bar → side with MORE votes wins
       (an additional strategy supporting one direction breaks the tie).
-    - Equal votes (1v1, 2v2, ...) → BOTH rejected (no trade).
+    - Equal votes (1v1, 2v2, ...) → BOTH rejected (no trade),
+      unless tie_break="priority": earliest strategy in `priority` order
+      that fired decides the side (aggressive mode).
 
-    directions: {strategy_name: pd.Series of {-1, 0, +1}} (0 = no signal).
+    Aggression presets (see AGGRESSION_PRESETS):
+      conservative: min_votes=2 (lone signals need a friend), ties rejected.
+      balanced:     min_votes=1, ties rejected.
+      aggressive:   min_votes=1, ties broken by queue priority.
 
-    Returns (entries, direction, stats) where stats has
-    n_conflict_bars, n_tie_rejects, n_majority_saves.
+    Returns (entries, direction, stats).
     """
+    order = priority or list(directions.keys())
     norm = {}
     for name, d in directions.items():
         if isinstance(d, np.ndarray):
@@ -92,12 +100,32 @@ def resolve_conflicts(directions: dict[str, pd.Series]
     n_long = (df > 0).sum(axis=1)
     n_short = (df < 0).sum(axis=1)
     conflict = (n_long > 0) & (n_short > 0)
-    composite = pd.Series(np.where(n_long > n_short, 1,
-                                   np.where(n_short > n_long, -1, 0)), index=idx)
+    win_long = (n_long >= min_votes) & (n_long > n_short)
+    win_short = (n_short >= min_votes) & (n_short > n_long)
+    win_long = win_long | ((~conflict) & (n_long >= min_votes) & (n_long > 0))
+    win_short = win_short | ((~conflict) & (n_short >= min_votes) & (n_short > 0))
+    composite = pd.Series(np.where(win_long, 1, np.where(win_short, -1, 0)), index=idx)
+    if tie_break == "priority":
+        tie = conflict & (n_long == n_short)
+        if tie.any():
+            prio = [c for c in order if c in df.columns]
+            for b in df.index[tie]:
+                row = df.loc[b, prio]
+                fired = row[row != 0]
+                if len(fired):
+                    composite.loc[b] = int(np.sign(fired.iloc[0]))
     entries = composite != 0
     stats = {
         "n_conflict_bars": int(conflict.sum()),
-        "n_tie_rejects": int((conflict & (n_long == n_short)).sum()),
+        "n_tie_rejects": int((conflict & (n_long == n_short) & (composite == 0)).sum()),
         "n_majority_saves": int((conflict & (n_long != n_short)).sum()),
+        "n_tie_priority_saves": int((conflict & (n_long == n_short) & (composite != 0)).sum()),
     }
     return entries, composite.astype(int), stats
+
+
+AGGRESSION_PRESETS = {
+    "conservative": dict(min_votes=2, tie_break="reject"),
+    "balanced": dict(min_votes=1, tie_break="reject"),
+    "aggressive": dict(min_votes=1, tie_break="priority"),
+}
