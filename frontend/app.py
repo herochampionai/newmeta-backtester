@@ -222,6 +222,9 @@ with st.sidebar:
     st.divider()
     mode = st.radio("Mode", ["🚀 Backtest", "🔬 Optimize", "🎲 Monte Carlo",
                               "📊 Walk-Forward", "🧬 Multi-Strategy",
+                              "🌊 Regime-Aware", "📂 Profile",
+                              "🎯 Ticker Scanner", "🔬 Deep Backtest",
+                              "🔄 MQL5 Equivalence",
                               "✅ Validate Strategies", "🪄 Auto-Magic",
                               "🎓 Guided Walkthrough"],
                     label_visibility="collapsed")
