@@ -7,6 +7,7 @@ from .mfi import MFI_Strategy
 from .ms import MS_Strategy
 from .mtf_stoch import QuadStochStrategy, resample_htf
 from core.universal_strategy import UniversalStrategy
+from core.regime import RegimeAwareStrategy, detect_regimes, regime_performance_summary
 
 STRATEGY_REGISTRY = {
     "ac_ao": AC_AO_Strategy,
@@ -17,4 +18,5 @@ STRATEGY_REGISTRY = {
     "ms": MS_Strategy,
     "mtf_stoch": QuadStochStrategy,
     "universal": UniversalStrategy,
+    "regime_aware": RegimeAwareStrategy,
 }

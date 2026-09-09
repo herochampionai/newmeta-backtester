@@ -59,10 +59,7 @@ def optimize_strategy(strategy_name: str, df: pd.DataFrame, spec: dict,
         study_name=study_name,
         directions=["maximize", "maximize"],
         sampler=optuna.samplers.TPESampler(seed=42),
-        storage=f"sqlite:///{Path('study_dir') / (study_name + '.db')}",
-        load_if_exists=True,
     )
-    Path("study_dir").mkdir(exist_ok=True)
     study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
     return study
 
