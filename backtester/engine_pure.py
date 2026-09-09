@@ -29,11 +29,28 @@ def run_pure(df: pd.DataFrame,
 
     Returns dict with: equity, trades, metrics, per_strategy, streak_stats, etc.
     """
-    # If multiple strategies, concatenate signals (union)
-    first_name = next(iter(signals_by_strategy))
-    entries, direction = signals_by_strategy[first_name]
-    entries = pd.Series(entries).fillna(False).astype(bool).values
-    direction = pd.Series(direction).fillna(0).astype(int).values
+    # Multi-strategy: union of all entries; direction takes first non-zero
+    if len(signals_by_strategy) == 1:
+        first_name = next(iter(signals_by_strategy))
+        entries, direction = signals_by_strategy[first_name]
+        entries = pd.Series(entries).fillna(False).astype(bool).values
+        direction = pd.Series(direction).fillna(0).astype(int).values
+    else:
+        entries_arrays = []
+        direction_arrays = []
+        for name, (e, d) in signals_by_strategy.items():
+            entries_arrays.append(pd.Series(e).fillna(False).astype(bool).values)
+            direction_arrays.append(pd.Series(d).fillna(0).astype(int).values)
+        # Union: any strategy fires an entry → trigger
+        entries = np.zeros(len(df), dtype=bool)
+        for e in entries_arrays:
+            entries |= e
+        # Direction: first non-zero per bar
+        direction = np.zeros(len(df), dtype=int)
+        for d in direction_arrays:
+            mask = (direction == 0) & (d != 0)
+            direction[mask] = d[mask]
+        first_name = "multi"
 
     pf = vbt.Portfolio.from_signals(
         close=df["close"],

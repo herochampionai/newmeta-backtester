@@ -26,10 +26,16 @@ def trades_per_year(trades: pd.DataFrame, year_col: str = "exit_bar",
 
 
 def streak_stats(trades: pd.DataFrame, pnl_col: str = "pnl") -> dict:
-    """Compute longest win/loss streaks from trade list."""
-    if trades.empty or pnl_col not in trades.columns:
+    """Compute longest win/loss streaks from trade list.
+    Auto-detects PnL column name (pnl, PnL, profit, Profit)."""
+    if trades.empty:
         return {}
-    pnls = trades[pnl_col].values
+    for c in (pnl_col, "pnl", "PnL", "profit", "Profit"):
+        if c in trades.columns:
+            pnls = trades[c].values
+            break
+    else:
+        return {}
     is_win = pnls > 0
     longest_win = 0
     longest_loss = 0

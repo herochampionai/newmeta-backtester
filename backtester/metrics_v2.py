@@ -18,9 +18,11 @@ def compute_all(returns: pd.Series, trades: pd.DataFrame | None = None,
     n = len(r)
     years = n / periods_per_year
 
-    # Basic returns
-    total_ret = float(equity.iloc[-1] - 1)
-    cagr = float(equity.iloc[-1] ** (1 / max(years, 1e-9)) - 1)
+    # Basic returns (equity is in dollars, normalize)
+    final_dollars = float(equity.iloc[-1])
+    initial_dollars = float(equity.iloc[0]) if len(equity) > 0 else init_cash
+    total_ret = (final_dollars / initial_dollars) - 1 if initial_dollars > 0 else 0.0
+    cagr = (final_dollars / initial_dollars) ** (1 / max(years, 1e-9)) - 1 if initial_dollars > 0 else 0.0
     vol = float(r.std() * np.sqrt(periods_per_year))
     sharpe = float((cagr - risk_free) / vol) if vol > 0 else 0.0
     downside = r[r < 0]
@@ -75,8 +77,17 @@ def compute_all(returns: pd.Series, trades: pd.DataFrame | None = None,
 
     # Per-trade metrics (if log provided)
     if trades is not None and len(trades) > 0:
-        pnls = trades["pnl"] if "pnl" in trades.columns else None
-        if pnls is not None and len(pnls) > 0:
+        # Normalize PnL column (vectorbt uses 'PnL', grid uses 'pnl')
+        pnl_col = None
+        for c in ("pnl", "PnL", "profit", "Profit"):
+            if c in trades.columns:
+                pnl_col = c
+                break
+        if pnl_col is None:
+            # Try to compute from column
+            return out
+        pnls = trades[pnl_col]
+        if len(pnls) > 0:
             wins = pnls[pnls > 0]
             losses = pnls[pnls < 0]
             n_trades = len(pnls)
