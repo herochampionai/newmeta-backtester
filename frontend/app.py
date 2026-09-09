@@ -270,18 +270,59 @@ with st.sidebar:
     st.caption(f"Cache dir: `{cache_dir}`")
 
     st.divider()
-    mode = st.radio("Mode", ["🚀 Backtest", "🔬 Optimize", "🎲 Monte Carlo",
-                              "📊 Walk-Forward", "🧬 Multi-Strategy",
-                              "🌊 Regime-Aware", "📂 Profile",
-                              "🎯 Ticker Scanner", "🔬 Deep Backtest",
-                              "🔄 MQL5 Equivalence",
-                              "✅ Validate Strategies", "🪄 Auto-Magic",
-                              "🎓 Guided Walkthrough"],
-                    label_visibility="collapsed")
+    # Mode is now selected from the top toolbar (header).
+    # Sidebar radio removed — header buttons are the single source of truth.
+    mode = st.session_state.get("current_mode", "🚀 Backtest")
 
-# === Header ===
+# === Header + Top toolbar (most-used modes) ===
 st.markdown("# 📈 Universal Backtester")
 st.caption("Drop any strategy file — .mq5, .py, .pine, .txt — get instant backtest with grid, recovery, adaptive sizing, swaps.")
+
+# Top toolbar with the 3 most-used modes as buttons
+TOOLBAR_MODES = [
+    ("🚀 Backtest", "🚀 Backtest"),
+    ("🔬 Optimize", "🔬 Optimize"),
+    ("🎲 Monte Carlo", "🎲 Monte Carlo"),
+]
+if "current_mode" not in st.session_state:
+    st.session_state["current_mode"] = "🚀 Backtest"
+
+cols = st.columns(len(TOOLBAR_MODES) + 1)
+for i, (label, mode_key) in enumerate(TOOLBAR_MODES):
+    with cols[i]:
+        is_active = st.session_state["current_mode"] == mode_key
+        btn_type = "primary" if is_active else "secondary"
+        if st.button(label, type=btn_type, use_container_width=True, key=f"toolbar_{i}"):
+            st.session_state["current_mode"] = mode_key
+            st.rerun()
+# "More modes" button in the 4th column
+with cols[-1]:
+    more_open = st.button("⋯ More", use_container_width=True, key="toolbar_more")
+    if more_open:
+        st.session_state["show_more_modes"] = not st.session_state.get("show_more_modes", False)
+
+# Render the active mode label so user knows what's selected
+mode = st.session_state["current_mode"]
+st.caption(f"Active mode: **{mode}**" + ("  ·  click ⋯ More for additional modes" if st.session_state.get("show_more_modes") else ""))
+
+# More modes expander (opens when ⋯ More is clicked)
+if st.session_state.get("show_more_modes"):
+    with st.expander("⋯ All modes", expanded=True):
+        MORE_MODES = [
+            "🚀 Backtest", "🔬 Optimize", "🎲 Monte Carlo", "📊 Walk-Forward",
+            "🧬 Multi-Strategy", "🌊 Regime-Aware", "📂 Profile", "🎯 Ticker Scanner",
+            "🔬 Deep Backtest", "🔄 MQL5 Equivalence", "✅ Validate Strategies",
+            "🪄 Auto-Magic", "🎓 Guided Walkthrough",
+        ]
+        more_cols = st.columns(7)
+        for i, m in enumerate(MORE_MODES):
+            with more_cols[i % 7]:
+                is_active = mode == m
+                btn_type = "primary" if is_active else "secondary"
+                if st.button(m, type=btn_type, use_container_width=True, key=f"more_{i}"):
+                    st.session_state["current_mode"] = m
+                    st.session_state["show_more_modes"] = False
+                    st.rerun()
 
 # === File drop ===
 col_drop, col_status = st.columns([3, 1])
