@@ -4,11 +4,9 @@ SPLIT 1 of 2 — same-TF quad:
   Four stochastics with different inputs on the SAME timeframe:
     (5,3,3), (14,3,3), (40,4,6), (60,6,10)
   BUY:  all four in oversold AND bullish divergence on fastest
-        AND fastest hooking up AND k/d cross AND (OBV rising OR CVD rising)
+        AND fastest hooking up AND k/d cross
+        AND volume ok (OBV rising OR CVD rising OR OBV/CVD bull div)
   SELL: mirror.
-
-The permissive volume gate (OBV|CVD rising via WMA5) only blocks
-when BOTH are falling.
 """
 from __future__ import annotations
 import numpy as np
@@ -57,23 +55,28 @@ class QuadStochSameTF(BaseStrategy):
 
         if bool(p.get("use_volume_filter", True)):
             wmp = int(p.get("volume_wma_period", 5))
-            _, _, vol_pass = ind.volume_rising(df["close"], df["high"], df["low"],
-                                              df["volume"] if "volume" in df.columns
-                                              else pd.Series(1.0, index=df.index),
-                                              wmp)
+            vol = df["volume"] if "volume" in df.columns else pd.Series(1.0, index=df.index)
+            obv_up, cvd_up, _ = ind.volume_rising(df["close"], df["high"], df["low"], vol, wmp)
+            o_series = ind.obv(df["close"], vol)
+            c_series = ind.cvd(df["close"], df["high"], df["low"], vol)
+            obv_bd, obv_rd = _detect_divergence(df["close"], o_series, lb)
+            cvd_bd, cvd_rd = _detect_divergence(df["close"], c_series, lb)
+            vol_buy = obv_up | cvd_up | obv_bd | cvd_bd
+            vol_sell = obv_up | cvd_up | obv_rd | cvd_rd
         else:
-            vol_pass = pd.Series(True, index=df.index)
+            vol_buy = pd.Series(True, index=df.index)
+            vol_sell = pd.Series(True, index=df.index)
 
         buy = (all_os & bull_div & hook_up & cross_up
-               & (k_fast < 50) & vol_pass)
+               & (k_fast < 50) & vol_buy)
         sell = (all_ob & bear_div & hook_dn & cross_dn
-                & (k_fast > 50) & vol_pass)
+                & (k_fast > 50) & vol_sell)
 
         # Permissive fallback (off by default): if strict combo gives nothing,
         # allow hook+cross in zone with volume pass.
         if not (buy | sell).any() and bool(p.get("fallback_on_empty", False)):
-            buy = (k_fast < os_) & hook_up & cross_up & vol_pass
-            sell = (k_fast > ob_) & hook_dn & cross_dn & vol_pass
+            buy = (k_fast < os_) & hook_up & cross_up & vol_buy
+            sell = (k_fast > ob_) & hook_dn & cross_dn & vol_sell
 
         sig.entries = buy | sell
         sig.direction = np.where(buy, 1, np.where(sell, -1, 0))
