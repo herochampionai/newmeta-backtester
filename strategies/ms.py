@@ -46,8 +46,11 @@ class MS_Strategy(BaseStrategy):
         k_p = stoch_k.shift(1)
         d_p = stoch_d.shift(1)
 
-        # Confluence filter (MQL5 lines 5509-5516)
-        use_conf = bool(p.get("use_confluence_filter", False))
+        # Confluence filter (MQL5 lines 5509-5516).
+        # Default True to match MQL5 `input bool MS_UseConfluenceFilter = true`.
+        # When True, a signal only fires if BOTH MACD and Stoch agree — this is
+        # the single biggest lever against over-trading (was False → 2200+ entries).
+        use_conf = bool(p.get("use_confluence_filter", True))
         if use_conf:
             macd_bull = macd_main > macd_sig
             macd_bear = macd_main < macd_sig
@@ -87,7 +90,8 @@ class MS_Strategy(BaseStrategy):
             sell1 = macd_turn_dn
 
         # Type_2: 28 Stoch-based patterns
-        ot2 = int(p.get("open_orders_type_2", 0))
+        # Default 22 to match MQL5 `input int MS_OpenOrdersType_2 = 22`.
+        ot2 = int(p.get("open_orders_type_2", 22))
         if ot2 > 0:
             buy2, sell2 = _msd_cases(ot2, k, k_p, d, d_p,
                                     stoch_lev_up, stoch_lev_dn)
