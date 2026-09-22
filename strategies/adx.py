@@ -12,6 +12,7 @@ Reference values for ADX:
   75+:   extremely strong
 """
 from __future__ import annotations
+from dataclasses import field
 import numpy as np
 import pandas as pd
 from . import indicators as ind
@@ -23,11 +24,56 @@ def _empty_signals(idx):
     return Signals(entries=z.copy(), exits=z.copy(), direction=pd.Series(0, index=idx, dtype=int))
 
 
+def _reversal_context(df: pd.DataFrame, lookback: int) -> tuple[pd.Series, pd.Series]:
+    body = (df["close"] - df["open"]).abs()
+    candle_range = (df["high"] - df["low"]).replace(0, np.nan)
+    upper_wick = df["high"] - df[["open", "close"]].max(axis=1)
+    lower_wick = df[["open", "close"]].min(axis=1) - df["low"]
+
+    small_body = body <= candle_range * 0.35
+    shooting_star = small_body & (upper_wick >= body * 2.0) & (lower_wick <= body * 1.2)
+    hammer = small_body & (lower_wick >= body * 2.0) & (upper_wick <= body * 1.2)
+
+    prev_bear = df["close"].shift(1) < df["open"].shift(1)
+    prev_bull = df["close"].shift(1) > df["open"].shift(1)
+    bull_engulf = prev_bear & (df["close"] > df["open"]) & (df["close"] >= df["open"].shift(1)) & (df["open"] <= df["close"].shift(1))
+    bear_engulf = prev_bull & (df["close"] < df["open"]) & (df["open"] >= df["close"].shift(1)) & (df["close"] <= df["open"].shift(1))
+
+    morning_star = (
+        (df["close"].shift(2) < df["open"].shift(2))
+        & ((df["close"].shift(1) - df["open"].shift(1)).abs() <= candle_range.shift(1) * 0.35)
+        & (df["close"] > df["open"])
+        & (df["close"] > (df["open"].shift(2) + df["close"].shift(2)) / 2)
+    )
+    evening_star = (
+        (df["close"].shift(2) > df["open"].shift(2))
+        & ((df["close"].shift(1) - df["open"].shift(1)).abs() <= candle_range.shift(1) * 0.35)
+        & (df["close"] < df["open"])
+        & (df["close"] < (df["open"].shift(2) + df["close"].shift(2)) / 2)
+    )
+
+    prior_low = df["low"].shift(1).rolling(lookback, min_periods=2).min()
+    prior_high = df["high"].shift(1).rolling(lookback, min_periods=2).max()
+    bullish_sweep = (df["low"] < prior_low) & (df["close"] > prior_low)
+    bearish_sweep = (df["high"] > prior_high) & (df["close"] < prior_high)
+
+    bull_reversal = hammer | bull_engulf | morning_star | bullish_sweep
+    bear_reversal = shooting_star | bear_engulf | evening_star | bearish_sweep
+    return bull_reversal.fillna(False), bear_reversal.fillna(False)
+
+
 class ADX_Strategy(BaseStrategy):
     name = "adx"
+    # Accept common naming conventions transparently.
+    # If callers pass `adx_period` without `bars_calculate`, treat them as equal.
+    # Same for `threshold` <-> `level_open_orders_2`.
+    _aliases = {
+        "adx_period": "bars_calculate",
+        "threshold": "level_open_orders_2",
+    }
 
     def generate(self, df: pd.DataFrame) -> Signals:
-        p = self.params
+        p = self._resolve_params()
         period = int(p.get("bars_calculate", 20))
 
         # === Multi-timeframe ADX (optional) ===
@@ -48,10 +94,9 @@ class ADX_Strategy(BaseStrategy):
                 a_h = a_h.reindex(df.index, method="ffill")
                 adx_arrays.append(a_h)
             if adx_arrays:
-                # Use AVERAGE ADX across all timeframes
-                a = pd.concat(adx_arrays, axis=1).mean(axis=1)
-                # Plus DI / Minus DI from entry TF only (for direction)
-                _, pdi, mdi = ind.adx(df["high"], df["low"], df["close"], period)
+                # Use average ADX across entry TF plus all requested higher TFs.
+                a_base, pdi, mdi = ind.adx(df["high"], df["low"], df["close"], period)
+                a = pd.concat([a_base] + adx_arrays, axis=1).mean(axis=1)
                 adx_meta = {"mtf_used": mtf_timeframes,
                              "n_timeframes": len(adx_arrays) + 1}
             else:
@@ -85,11 +130,22 @@ class ADX_Strategy(BaseStrategy):
 
         lev1 = float(p.get("level_open_orders_1", 55))
         lev2 = float(p.get("level_open_orders_2", 15))
-        # Auto-relax for H1 if no _strict_adx flag
-        if not p.get("_strict_adx", False):
-            lev1 = min(lev1, 25.0)
-        adx_above = a > lev1
-
+        use_zone_logic = bool(p.get("use_zone_logic", True))
+        adx_low = float(p.get("adx_zone_low", 18))
+        adx_high = float(p.get("adx_zone_high", 35))
+        continuation_level = float(p.get("adx_continuation_level", 24))
+        reversal_edge = float(p.get("adx_reversal_edge", 20))
+        if use_zone_logic:
+            adx_above = (a > adx_low) & (a < adx_high)
+            continuation_zone = a >= continuation_level
+            reversal_zone = (a >= adx_low) & (a <= reversal_edge)
+        else:
+            # Auto-relax for H1 if no _strict_adx flag
+            if not p.get("_strict_adx", False):
+                lev1 = min(lev1, 25.0)
+            adx_above = a > lev1
+            continuation_zone = adx_above
+            reversal_zone = pd.Series(False, index=df.index)
         sig = _empty_signals(df.index)
         open_type = int(p.get("open_orders_type", 1))
         # === Open cases 1-4 ===
@@ -110,15 +166,32 @@ class ADX_Strategy(BaseStrategy):
             elif open_type == 4:
                 buy = falling & (mdi > pdi) & (mdi > lev2)
                 sell = falling & (pdi > mdi) & (pdi > lev2)
+            if use_zone_logic:
+                sweep_lookback = int(p.get("sweep_lookback", 5))
+                bull_reversal, bear_reversal = _reversal_context(df, sweep_lookback)
+                bull_cont = continuation_zone & rising & (pdi > mdi) & (pdi > lev2)
+                bear_cont = continuation_zone & rising & (mdi > pdi) & (mdi > lev2)
+                bull_rev = reversal_zone & (pdi > mdi) & bull_reversal
+                bear_rev = reversal_zone & (mdi > pdi) & bear_reversal
+                buy = (buy & continuation_zone) | bull_cont | bull_rev
+                sell = (sell & continuation_zone) | bear_cont | bear_rev
             buy = buy & adx_above
             sell = sell & adx_above
             if use_di_cross:
-                buy = buy & bull_cross
-                sell = sell & bear_cross
+                if use_zone_logic:
+                    buy = buy & (bull_cross | reversal_zone)
+                    sell = sell & (bear_cross | reversal_zone)
+                else:
+                    buy = buy & bull_cross
+                    sell = sell & bear_cross
             # Fallback if no signals: relaxed DI dominance
             if not (buy | sell).any():
-                buy = (a > lev1 * 0.6) & (pdi > mdi)
-                sell = (a > lev1 * 0.6) & (mdi > pdi)
+                if use_zone_logic:
+                    buy = adx_above & (pdi > mdi) & (continuation_zone | reversal_zone)
+                    sell = adx_above & (mdi > pdi) & (continuation_zone | reversal_zone)
+                else:
+                    buy = (a > lev1 * 0.6) & (pdi > mdi)
+                    sell = (a > lev1 * 0.6) & (mdi > pdi)
             sig.entries = buy | sell
             sig.direction = np.where(buy, 1, np.where(sell, -1, 0))
 
@@ -150,3 +223,8 @@ class ADX_Strategy(BaseStrategy):
             sig.exits = cb | cs
 
         return sig
+
+
+
+
+
