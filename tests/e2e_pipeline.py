@@ -9,9 +9,14 @@ print('=' * 70)
 print('END-TO-END PIPELINE VERIFICATION')
 print('=' * 70)
 
-# --- 1. Load real data ---
+# --- 1. Load real data (prefer freshest cached EURUSD H1) ---
 print('\n[1/8] Loading real EURUSD H1 data from cache')
-df = pd.read_parquet('data/cache/EURUSD_H1_7039ec2ae4fac52d.parquet')
+from pathlib import Path as _Path
+_candidates = sorted(_Path('data/cache').glob('EURUSD_H1*.parquet'),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+assert _candidates, 'No EURUSD_H1 cache found in data/cache'
+print(f'      Using: {_candidates[0].name}')
+df = pd.read_parquet(_candidates[0])
 print(f'      {len(df)} bars, {df.index[0]} -> {df.index[-1]}')
 
 # --- 2. Data Quality check (R011) ---
@@ -45,21 +50,24 @@ metrics = result.get('metrics', {})
 trades_df = result.get('trades', pd.DataFrame())
 print(f'      Net PnL: ${metrics.get("net_pnl", 0):.2f}')
 print(f'      Sharpe: {metrics.get("sharpe", 0):.3f}')
-print(f'      Max DD: {metrics.get("max_drawdown_pct", 0):.2f}%')
+print(f'      Max DD: {metrics.get("max_drawdown", 0) * 100:.2f}%')
 print(f'      Trades: {len(trades_df)}')
 print(f'      Win rate: {metrics.get("win_rate", 0):.1%}')
 
 # --- 4. Statistical significance (R012) ---
 print('\n[4/8] R012 - Statistical significance test')
-if len(trades_df) >= 5 and 'pnl' in trades_df.columns:
+_pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
+                 if c in trades_df.columns), None)
+if len(trades_df) >= 5 and _pnl_col:
     from analysis.stat_tests import compare_strategies
-    returns = trades_df['pnl'].values
+    returns = trades_df[_pnl_col].values
     # A vs A+5% (slight improvement hypothesis)
     returns_b = returns * 1.05
     verdict = compare_strategies(returns, returns_b)
+    _t = verdict.get('t_test', {})
     print(f'      A/B verdict: {verdict.get("verdict", "n/a")}')
-    print(f'      p-value: {verdict.get("p_value", "n/a")}')
-    print(f'      Cohen d: {verdict.get("cohens_d", "n/a")}')
+    print(f'      p-value: {_t.get("p_value", "n/a")}')
+    print(f'      Cohen d: {_t.get("cohens_d", "n/a")}')
 
 # --- 5. Multi-currency portfolio (R005) ---
 print('\n[5/8] R005 - Multi-currency portfolio compute')
@@ -107,7 +115,9 @@ registry = MetricsRegistry()
 registry.counter('backtest_runs_total', labels={'symbol': 'EURUSD'}).inc()
 registry.gauge('equity').set(10000 + metrics.get('net_pnl', 0))
 registry.gauge('sharpe').set(metrics.get('sharpe', 0))
-for pnl in trades_df['pnl'].head(20) if 'pnl' in trades_df.columns else []:
+_hist_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
+                  if c in trades_df.columns), None)
+for pnl in trades_df[_hist_col].head(20) if _hist_col else []:
     registry.histogram('trade_pnl').observe(float(pnl))
 snap = registry.snapshot()
 print(f'      Counters: {len(snap["counters"])}')

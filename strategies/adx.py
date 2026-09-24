@@ -12,7 +12,6 @@ Reference values for ADX:
   75+:   extremely strong
 """
 from __future__ import annotations
-from dataclasses import field
 import numpy as np
 import pandas as pd
 from . import indicators as ind

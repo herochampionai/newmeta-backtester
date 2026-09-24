@@ -174,7 +174,13 @@ class MultiCurrencyPortfolio:
         return pos
 
     def compute_metrics(self, returns: np.ndarray | None = None) -> PortfolioMetrics:
-        """Compute aggregated portfolio metrics including VaR."""
+        """Compute aggregated portfolio metrics including VaR.
+
+        If no positions are tracked but equity_history exists, derives total_pnl
+        and equity from the equity curve. This handles the common case where
+        the user just wants portfolio-level metrics from a backtest result
+        without manually adding every closed trade as a Position.
+        """
         m = PortfolioMetrics(base_currency=self.base_currency)
         m.n_positions = len(self.positions)
         per_ccy_pnl = {}
@@ -197,6 +203,16 @@ class MultiCurrencyPortfolio:
 
         m.n_currencies = len(per_ccy_pnl)
         m.per_currency_pnl = {k: round(v, 2) for k, v in per_ccy_pnl.items()}
+
+        # Fallback: derive total_pnl from equity history when no positions tracked.
+        # This lets users call update_equity() and get meaningful metrics without
+        # manually adding every closed trade as a Position.
+        if m.n_positions == 0 and len(self.equity_history) >= 2:
+            m.total_pnl_base = self.equity_history[-1] - self.equity_history[0]
+            m.total_pnl = m.total_pnl_base
+            per_ccy_pnl[self.base_currency.upper()] = m.total_pnl_base
+            m.n_currencies = 1
+            m.per_currency_pnl = {self.base_currency.upper(): round(m.total_pnl_base, 2)}
 
         m.equity = self.balance + m.total_pnl_base
         m.free_margin = m.equity - m.total_margin

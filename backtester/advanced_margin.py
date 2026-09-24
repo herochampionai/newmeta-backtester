@@ -221,9 +221,12 @@ if __name__ == "__main__":
 
     print()
     print("=== SPAN-style Margin ===")
+    entry = 4500
     scenarios = [4400, 4450, 4500, 4550, 4600]
-    span = span_margin(scenarios, position_size=2, contract_multiplier=50)
-    print(f"Long 2 ES across scenarios: ${span} margin required")
+    span_long = span_margin(entry, scenarios, position_size=2, contract_multiplier=50)
+    print(f"Long 2 ES @ {entry} across {scenarios}: ${span_long} worst loss")
+    span_short = span_margin(entry, scenarios, position_size=-2, contract_multiplier=50)
+    print(f"Short 2 ES @ {entry} across {scenarios}: ${span_short} worst loss")
 
     print()
     print("=== Option Greeks (ATM call) ===")

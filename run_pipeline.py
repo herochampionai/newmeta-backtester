@@ -176,7 +176,9 @@ def run_pipeline(args) -> int:
     metrics = bt_result.get("metrics", {})
     trades = bt_result.get("trades", pd.DataFrame())
     print(f"  Net PnL: ${metrics.get('net_pnl', 0):.2f}")
-    print(f"  Sharpe: {metrics.get('sharpe', 0):.3f}, Max DD: {metrics.get('max_drawdown_pct', 0):.2f}%")
+    # max_drawdown is stored as a fraction (-0.04 = -4%); convert to percent.
+    max_dd_pct = metrics.get('max_drawdown', 0) * 100
+    print(f"  Sharpe: {metrics.get('sharpe', 0):.3f}, Max DD: {max_dd_pct:.2f}%")
     print(f"  Trades: {len(trades)}, Win rate: {metrics.get('win_rate', 0):.1%}")
     registry.gauge("backtest_net_pnl").set(metrics.get("net_pnl", 0))
     registry.gauge("backtest_sharpe").set(metrics.get("sharpe", 0))
@@ -229,7 +231,15 @@ def run_pipeline(args) -> int:
         if specs:
             sens = analyze_parameter_sensitivity(
                 param_specs=specs, evaluator=criterion_fn, n_samples=32)
-            print(f"  Total indices: {sens.get('total_indices', {})}")
+            # Result has 'importance_ranking' with {param, total_importance} per param.
+            ranking = sens.get("importance_ranking", [])
+            sobol = sens.get("sobol", {})
+            print(f"  Total-order indices (Sobol ST):")
+            for row in ranking:
+                name = row.get("param", "?")
+                ti = row.get("total_importance", 0)
+                first_order = sobol.get("S", [0] * len(ranking))[ranking.index(row)] if sobol.get("S") else 0
+                print(f"    {name}: ST={ti:.3f}, S={first_order:.3f}")
             print(f"  Time: {time.time()-t0:.1f}s")
         else:
             print(f"  SKIPPED (no numeric params)")
@@ -243,8 +253,14 @@ def run_pipeline(args) -> int:
         print("\n[6/8] R012 Statistical Significance…")
         returns = trades[pnl_col].values
         v = compare_strategies(returns, returns * 0.5)
-        print(f"  A vs A-50%: verdict={v.get('verdict', 'n/a')}, "
-              f"p={v.get('p_value', 0):.4f}, d={v.get('cohens_d', 0):.3f}")
+        # result is nested: {t_test: {p_value, cohens_d, ...}, verdict, ...}
+        t = v.get('t_test', {})
+        mw = v.get('mann_whitney', {})
+        print(f"  A vs A-50%: verdict={v.get('verdict', 'n/a')}")
+        print(f"    t-test: t={t.get('t_statistic', 0):.3f}, "
+              f"p={t.get('p_value', 0):.4f}, d={t.get('cohens_d', 0):.3f}")
+        print(f"    mann-whitney: U={mw.get('u_statistic', 0):.1f}, "
+              f"p={mw.get('p_value', 0):.4f}")
     else:
         reason = (f"need ≥10 trades (have {len(trades)})"
                   if len(trades) < 10 else f"no PnL column (have {list(trades.columns)[:5]})"

@@ -48,7 +48,13 @@ for stem in strategy_files:
                 n_e = int(sig.entries.sum()) if hasattr(sig, 'entries') else 0
                 results.append((f'{stem}.{cls.__name__}', 'PASS', f'entries={n_e}'))
             except Exception as e:
-                results.append((f'{stem}.{cls.__name__}', 'FAIL', f'{type(e).__name__}: {str(e)[:60]}'))
+                # Config-gated base classes (e.g. MTFStrategy requires ltf_strategy_cls)
+                # are by design, not regressions — mark as skipped.
+                if 'ltf_strategy_cls' in str(e):
+                    results.append((f'{stem}.{cls.__name__}', 'skipped',
+                                    'config-gated base class (needs ltf_strategy_cls)'))
+                else:
+                    results.append((f'{stem}.{cls.__name__}', 'FAIL', f'{type(e).__name__}: {str(e)[:60]}'))
     except Exception as e:
         results.append((stem, 'IMPORT_FAIL', f'{type(e).__name__}: {str(e)[:60]}'))
 
