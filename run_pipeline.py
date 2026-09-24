@@ -130,15 +130,31 @@ def run_pipeline(args) -> int:
     from analysis.walkforward_v2 import walk_forward_v2
     from analysis.parameter_sensitivity import analyze_parameter_sensitivity
     from analysis.stat_tests import compare_strategies
+    from analysis.statistical_significance import (
+        probabilistic_sharpe_ratio, deflated_sharpe_ratio,
+    )
     from analysis.adversarial_stress import run_stress_test
+    from backtester.portfolio import MultiCurrencyPortfolio
 
     # ---- 0. Observability setup ----
+    run_ts = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
     registry = MetricsRegistry()
     logger = StructuredLogger(
         name="pipeline",
-        log_path=f"output/logs/pipeline_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.jsonl",
+        log_path=f"output/logs/pipeline_{run_ts}.jsonl",
         console=False,
     )
+    # Consolidated report artifact (IMP-2): every stage records here,
+    # written to output/reports/pipeline_<ts>.json at the end.
+    report: dict = {
+        "run_id": f"pipeline_{run_ts}",
+        "symbol": args.symbol,
+        "timeframe": args.timeframe,
+        "strategy": args.strategy,
+        "params": json.loads(args.params) if args.params else {},
+        "capital": args.capital,
+        "stages": {},
+    }
 
     print("=" * 75)
     print(f"PIPELINE: {args.strategy} on {args.symbol}/{args.timeframe}")
@@ -195,14 +211,24 @@ def run_pipeline(args) -> int:
                         init_cash=args.capital, symbol=args.symbol, strict_data=False
                         ).get("metrics", {}).get("sharpe", 0)
 
-    # Build param spec: vary each user param ±50% in 3 steps
+    # Build param spec: vary each user param ±50% in 5 steps.
+    # Int params stay ints (midpoints rounded) so strategies doing int()
+    # get the intended values instead of silently truncated floats.
+    def _grid(v):
+        if isinstance(v, int):
+            low = max(1, int(v * 0.5))
+            high = int(v * 1.5) + 1
+            return [low, round((low + v) / 2), v, round((v + high) / 2), high]
+        low = v * 0.5
+        high = v * 1.5
+        return [low, (low + v) / 2, v, (v + high) / 2, high]
+
     param_spec = {}
     for k, v in user_params.items():
-        if isinstance(v, (int, float)) and v != 0:
-            low = max(1, int(v * 0.5)) if isinstance(v, int) else v * 0.5
-            high = int(v * 1.5) + 1 if isinstance(v, int) else v * 1.5
-            param_spec[k] = [low, (low + v) / 2, v, (v + high) / 2, high]
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v != 0:
+            param_spec[k] = _grid(v)
 
+    wf_n_trials = 0
     if param_spec:
         wf = walk_forward_v2(
             df=df, strategy_name=args.strategy,
@@ -214,8 +240,14 @@ def run_pipeline(args) -> int:
         print(f"  Windows: {len(wf.windows)}, passed: {wf.passed_count}, failed: {wf.failed_count}")
         print(f"  Verdict: {wf.overall_verdict}  ({time.time()-t0:.1f}s)")
         registry.counter("wf_verdict", labels={"verdict": wf.overall_verdict}).inc()
+        wf_n_trials = len(wf.windows) * 5
+        report["stages"]["walkforward"] = {
+            "windows": len(wf.windows), "passed": wf.passed_count,
+            "failed": wf.failed_count, "verdict": wf.overall_verdict,
+        }
     else:
         print(f"  SKIPPED (no numeric params to vary)")
+        report["stages"]["walkforward"] = {"skipped": "no numeric params"}
 
     # ---- 5. Sobol sensitivity ----
     if not args.skip_sensitivity:
@@ -241,16 +273,23 @@ def run_pipeline(args) -> int:
                 first_order = sobol.get("S", [0] * len(ranking))[ranking.index(row)] if sobol.get("S") else 0
                 print(f"    {name}: ST={ti:.3f}, S={first_order:.3f}")
             print(f"  Time: {time.time()-t0:.1f}s")
+            report["stages"]["sensitivity"] = {
+                r.get("param"): {"ST": r.get("total_importance"),
+                                 "S": sobol.get("S", [0] * len(ranking))[i]
+                                 if sobol.get("S") else 0}
+                for i, r in enumerate(ranking)
+            }
         else:
             print(f"  SKIPPED (no numeric params)")
     else:
         print("\n[5/8] R010 Parameter Sensitivity: SKIPPED (--skip-sensitivity)")
+        report["stages"]["sensitivity"] = {"skipped": "--skip-sensitivity"}
 
-    # ---- 6. Stat significance ----
+    # ---- 6. Stat significance (R012 + R003 PSR/DSR) ----
     pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
                     if c in trades.columns), None)
     if not args.skip_significance and len(trades) >= 10 and pnl_col:
-        print("\n[6/8] R012 Statistical Significance…")
+        print("\n[6/8] R012 Statistical Significance + R003 PSR/DSR…")
         returns = trades[pnl_col].values
         v = compare_strategies(returns, returns * 0.5)
         # result is nested: {t_test: {p_value, cohens_d, ...}, verdict, ...}
@@ -261,11 +300,30 @@ def run_pipeline(args) -> int:
               f"p={t.get('p_value', 0):.4f}, d={t.get('cohens_d', 0):.3f}")
         print(f"    mann-whitney: U={mw.get('u_statistic', 0):.1f}, "
               f"p={mw.get('p_value', 0):.4f}")
+        # IMP-3: PSR/DSR correct the backtest Sharpe for multiple testing.
+        # n_trials = configs actually evaluated (WF windows × trials), min 1.
+        n_t = max(1, wf_n_trials)
+        obs_sr = float(metrics.get("sharpe", 0) or 0)
+        rets = pd.Series(returns, dtype=float)
+        skew = float(rets.skew()) if len(rets) > 2 else 0.0
+        kurt = float(rets.kurtosis() + 3.0) if len(rets) > 3 else 3.0
+        psr = probabilistic_sharpe_ratio(obs_sr, n_trials=n_t, skewness=skew, kurtosis=kurt)
+        dsr = deflated_sharpe_ratio(obs_sr, n_trials=n_t, skewness=skew, kurtosis=kurt)
+        print(f"  PSR(SR>{0}, {n_t} trials): {psr.get('psr', 0):.3f} [{psr.get('verdict', 'n/a')}]")
+        print(f"  DSR({n_t} trials): {dsr.get('dsr', 0):.3f} [{dsr.get('verdict', 'n/a')}]")
+        report["stages"]["significance"] = {
+            "ab_verdict": v.get("verdict"), "t_p": t.get("p_value"),
+            "cohens_d": t.get("cohens_d"),
+            "psr": psr.get("psr"), "psr_verdict": psr.get("verdict"),
+            "dsr": dsr.get("dsr"), "dsr_verdict": dsr.get("verdict"),
+            "n_trials": n_t,
+        }
     else:
         reason = (f"need ≥10 trades (have {len(trades)})"
                   if len(trades) < 10 else f"no PnL column (have {list(trades.columns)[:5]})"
                   if not pnl_col else "--skip-significance")
         print(f"\n[6/8] R012 Stat Significance: SKIPPED ({reason})")
+        report["stages"]["significance"] = {"skipped": reason}
 
     # ---- 7. Adversarial stress ----
     if not args.skip_stress:
@@ -286,12 +344,36 @@ def run_pipeline(args) -> int:
         stress = run_stress_test(df=df, strategy_fn=stress_strat_fn(user_params))
         print(f"  Verdict: {stress.get('verdict', 'n/a')}, "
               f"worst: {stress.get('worst_scenario', 'n/a')}  ({time.time()-t0:.1f}s)")
+        report["stages"]["stress"] = {
+            "verdict": stress.get("verdict"), "worst_scenario": stress.get("worst_scenario"),
+        }
     else:
         print("\n[7/8] R009 Stress: SKIPPED (--skip-stress)")
+        report["stages"]["stress"] = {"skipped": "--skip-stress"}
 
-    # ---- 8. Journal + tax + observability ----
-    print("\n[8/8] R015 Journal + Tax + R014 Metrics…")
-    journal = TradeJournal(run_id=f"pipeline_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}")
+    # ---- 8. Portfolio VaR + Journal + tax + observability ----
+    print("\n[8/8] R005 Portfolio VaR + R015 Journal/Tax + R014 Metrics…")
+    # IMP-1: feed real trade returns into the portfolio so VaR/CVaR compute
+    # (previously compute_metrics() got no returns → VaR stayed $0).
+    trade_returns = None
+    if pnl_col and len(trades) > 0:
+        trade_returns = trades[pnl_col].values.astype(float)
+        port = MultiCurrencyPortfolio(base_currency="USD", init_balance=args.capital)
+        port.update_equity(float(metrics.get("net_pnl", 0) or 0))
+        pm = port.compute_metrics(returns=trade_returns)
+        print(f"  Portfolio equity: ${pm.equity:.2f}, VaR95: ${pm.var_95:.2f}, "
+              f"VaR99: ${pm.var_99:.2f}, ES: ${pm.expected_shortfall:.2f}")
+        registry.gauge("portfolio_var_95").set(pm.var_95 or 0)
+        report["stages"]["portfolio"] = {
+            "equity": pm.equity, "total_pnl": pm.total_pnl,
+            "var_95": pm.var_95, "var_99": pm.var_99,
+            "expected_shortfall": pm.expected_shortfall,
+        }
+    else:
+        print(f"  Portfolio: SKIPPED (no trade returns)")
+        report["stages"]["portfolio"] = {"skipped": "no trade returns"}
+
+    journal = TradeJournal(run_id=report["run_id"])
     journal.log_run_meta(strategy=args.strategy, symbol=args.symbol, params=user_params,
                          dq_grade=dq.grade)
     if len(trades) > 0:
@@ -300,6 +382,34 @@ def run_pipeline(args) -> int:
         print(f"  Net PnL: ${us_tax['totals']['gross_pnl']:.2f}, "
               f"US tax: ${us_tax['totals']['estimated_tax']:.2f}, "
               f"net after tax: ${us_tax['totals']['net_after_tax']:.2f}")
+        report["stages"]["journal"] = {
+            "trades_logged": len(trades),
+            "gross_pnl": us_tax["totals"]["gross_pnl"],
+            "us_tax": us_tax["totals"]["estimated_tax"],
+            "net_after_tax": us_tax["totals"]["net_after_tax"],
+        }
+    else:
+        report["stages"]["journal"] = {"trades_logged": 0}
+
+    # Backtest + DQ summary for the report
+    report["stages"]["data_quality"] = {
+        "grade": dq.grade, "score": dq.score, "gate_passed": bool(gate["passed"]),
+    }
+    report["stages"]["backtest"] = {
+        "net_pnl": float(metrics.get("net_pnl", 0) or 0),
+        "sharpe": float(metrics.get("sharpe", 0) or 0),
+        "max_drawdown": float(metrics.get("max_drawdown", 0) or 0),
+        "trades": len(trades),
+        "win_rate": float(metrics.get("win_rate", 0) or 0),
+    }
+    report["elapsed_sec"] = round(time.time() - start_time, 1)
+
+    # IMP-2: single consolidated artifact for audit/proof trail
+    reports_dir = Path("output/reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    report_path = reports_dir / f"{report['run_id']}.json"
+    report_path.write_text(json.dumps(report, indent=2, default=str))
+    print(f"  Report: {report_path}")
 
     # Finalize metrics
     registry.counter("pipeline_runs_total").inc()
