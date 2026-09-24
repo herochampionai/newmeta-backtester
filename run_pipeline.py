@@ -151,8 +151,15 @@ def load_data(symbol: str, timeframe: str, source: str = "auto",
     """Load data: cache -> Dukascopy (primary, R019) -> Yahoo (fallback)."""
     sym = symbol.upper().replace("/", "")
 
-    def _load_cached():
-        cached = find_cache(sym, timeframe)
+    def _load_cached(exclude_duka=False):
+        if exclude_duka:
+            cands = sorted(
+                (p for p in Path("data/cache").glob(f"{sym}_{timeframe.upper()}*.parquet")
+                 if "_duka_" not in p.name),
+                key=lambda p: p.stat().st_mtime, reverse=True)
+            cached = cands[0] if cands else None
+        else:
+            cached = find_cache(sym, timeframe)
         if cached:
             print(f"  [data] Loading cached: {cached.name}")
             df = pd.read_parquet(cached)
@@ -161,7 +168,7 @@ def load_data(symbol: str, timeframe: str, source: str = "auto",
         return None
 
     if source == "yahoo":
-        df = _load_cached()
+        df = _load_cached(exclude_duka=True)
         if df is not None:
             return df
     elif source == "dukascopy":
@@ -310,12 +317,18 @@ def run_pipeline(args) -> int:
     # ---- 3. Backtest with user params ----
     print("\n[3/8] Backtest…")
     user_params = json.loads(args.params) if args.params else {}
-    strategy = _make_strategy(args.strategy, user_params)
-    sig = strategy.generate(df)
-    signals = {args.strategy: (sig.entries.values.astype(int), sig.exits.values.astype(int))}
-    bt_result = run_full(df, signals, init_cash=args.capital, symbol=args.symbol, strict_data=False)
-    metrics = bt_result.get("metrics", {})
-    trades = bt_result.get("trades", pd.DataFrame())
+
+    def run_bt(params):
+        """Run one full backtest, return (metrics, trades)."""
+        strat = _make_strategy(args.strategy, params)
+        sg = strat.generate(df)
+        r = run_full(df,
+                     {args.strategy: (sg.entries.values.astype(int),
+                                      sg.exits.values.astype(int))},
+                     init_cash=args.capital, symbol=args.symbol, strict_data=False)
+        return r.get("metrics", {}), r.get("trades", pd.DataFrame())
+
+    metrics, trades = run_bt(user_params)
     print(f"  Net PnL: ${metrics.get('net_pnl', 0):.2f}")
     # max_drawdown is stored as a fraction (-0.04 = -4%); convert to percent.
     max_dd_pct = metrics.get('max_drawdown', 0) * 100
@@ -354,6 +367,7 @@ def run_pipeline(args) -> int:
             param_spec[k] = _grid(v)
 
     wf_n_trials = 0
+    wf = None
     if param_spec:
         wf = walk_forward_v2(
             df=df, strategy_name=args.strategy,
@@ -373,6 +387,67 @@ def run_pipeline(args) -> int:
     else:
         print(f"  SKIPPED (no numeric params to vary)")
         report["stages"]["walkforward"] = {"skipped": "no numeric params"}
+
+    # ---- 4b. R024 Auto-iterate: OVERFIT -> shrink bounds -> WF again ----
+    if args.auto_iterate > 0 and param_spec and wf is not None \
+            and wf.overall_verdict != "ACCEPT":
+        from analysis.auto_iterate import auto_iterate
+        print(f"\n[4b/8] R024 Auto-iterate (max {args.auto_iterate} refinement rounds)…")
+        t_iter = time.time()
+
+        def _wf_adapter(spec):
+            rw = walk_forward_v2(
+                df=df, strategy_name=args.strategy,
+                param_spec=spec, criterion_fn=criterion_fn,
+                train_months=args.wf_train, test_months=args.wf_test,
+                roll_months=1, n_trials=5,
+                anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200,
+            )
+            wins = list(rw.windows or [])
+            pool = [w for w in wins if w.passed] or wins
+
+            def _score(w):
+                s = w.test_score
+                return s if s is not None else float("-inf")
+
+            best_w = max(pool, key=_score) if pool else None
+            return {
+                "verdict": rw.overall_verdict,
+                "passed": rw.passed_count, "failed": rw.failed_count,
+                "n_windows": len(wins),
+                "best_params": dict(best_w.params) if best_w and best_w.params else {},
+                "best_oos_sharpe": _score(best_w) if best_w else 0.0,
+            }
+
+        it = auto_iterate(df, args.strategy, user_params, _wf_adapter,
+                          max_rounds=args.auto_iterate, verbose=True)
+        it_path = it.save(f"output/reports/{report['run_id']}_iterate.json")
+        print(f"  Iterate: accepted={it.accepted}, stop={it.stop_reason}")
+        print(f"  Audit: {it_path}  ({time.time()-t_iter:.1f}s)")
+        wf_n_trials += sum(1 for _ in it.rounds) * (len(wf.windows) or 1) * 5
+        report["stages"]["auto_iterate"] = it.to_dict()
+        # Adopt ONLY on strict OOS gain vs round 0 (status-quo bias):
+        # a "refined" config with equal-or-worse OOS Sharpe must not
+        # silently replace the backtested params.
+        r0_score = it.rounds[0].best_oos_sharpe if it.rounds else 0.0
+        if it.best_params and it.best_oos_sharpe > r0_score:
+            print(f"  Adopting refined params: {it.best_params} "
+                  f"(OOS {r0_score:.3f} -> {it.best_oos_sharpe:.3f})")
+            user_params = dict(it.best_params)
+            report["params"] = dict(user_params)
+            report["stages"]["auto_iterate"]["adopted"] = True
+            metrics, trades = run_bt(user_params)
+            print(f"  Re-run backtest: PnL=${metrics.get('net_pnl', 0):.2f}, "
+                  f"Sharpe={metrics.get('sharpe', 0):.3f}, trades={len(trades)}")
+        else:
+            report["stages"]["auto_iterate"]["adopted"] = False
+            print(f"  Keeping original params (no OOS gain: "
+                  f"best {it.best_oos_sharpe:.3f} vs round-0 {r0_score:.3f})")
+    else:
+        report["stages"]["auto_iterate"] = {
+            "skipped": ("off (--auto-iterate 0)" if args.auto_iterate <= 0
+                        else ("ACCEPT already" if wf is not None else "no WF run"))
+        }
 
     # ---- 5. Sobol sensitivity ----
     if not args.skip_sensitivity:
@@ -580,6 +655,9 @@ Examples:
     parser.add_argument("--wf-train", type=int, default=4, help="WF train window (months)")
     parser.add_argument("--wf-test", type=int, default=1, help="WF test window (months)")
     parser.add_argument("--wf-anchored", action="store_true", default=True, help="Anchored WF")
+    parser.add_argument("--auto-iterate", type=int, default=0, metavar="N",
+                        help="R024: if WF verdict != ACCEPT, run up to N refinement rounds "
+                             "and adopt the best OOS params (0 = off)")
     parser.add_argument("--skip-stress", action="store_true")
     parser.add_argument("--skip-sensitivity", action="store_true")
     parser.add_argument("--skip-significance", action="store_true")
