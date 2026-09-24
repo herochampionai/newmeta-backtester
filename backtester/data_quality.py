@@ -437,6 +437,16 @@ def compute_grade(report: DataQualityReport) -> tuple[str, float]:
     elif "yahoo" in src:
         score -= 10
         flags.append("yahoo_source")
+        # Survivorship honesty: Yahoo equities contain only survivors —
+        # delisted failures are invisible, flattering every backtest.
+        # FX spot / metals / crypto have no listed-company survivorship problem.
+        s = (report.symbol or "").upper().replace("/", "")
+        is_fx_like = ((len(s) == 6 and s.isalpha())
+                      or s in ("XAUUSD", "XAGUSD")
+                      or s.endswith("USDT") or s.endswith("BTC"))
+        if not is_fx_like:
+            score -= 5
+            flags.append("no_survivorship_control")
 
     score = max(0, min(100, score))
 

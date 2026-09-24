@@ -396,6 +396,47 @@ def run_pipeline(args) -> int:
                 r.get("equity"))
 
     metrics, trades, _equity = run_bt(user_params)
+    tune_rep = None
+    if args.tune > 0:
+        from analysis.fine_tuner import fine_tune
+        print(f"\n[3b/8] Fine-tune (TPE, {args.tune} trials)…")
+        _space = {}
+        for _k, _v in user_params.items():
+            if isinstance(_v, bool) or not isinstance(_v, (int, float)) or _v == 0:
+                continue
+            if isinstance(_v, int):
+                _space[_k] = (max(1, int(_v * 0.5)), int(_v * 1.5) + 1, "int")
+            else:
+                _space[_k] = (_v * 0.5, _v * 1.5, "float")
+
+        def _run_bt_slice(_p, _d):
+            _s = _make_strategy(args.strategy, _p)
+            _sg = _s.generate(_d)
+            _r = run_full(_d,
+                          {args.strategy: (_sg.entries.values.astype(int),
+                                           _sg.exits.values.astype(int))},
+                          init_cash=args.capital, **_exec_kwargs(_d, args),
+                          strict_data=False)
+            _m = _r.get("metrics", {})
+            _t = _r.get("trades", pd.DataFrame())
+            _m["trades"] = len(_t)
+            return _m
+
+        if _space:
+            tune_rep = fine_tune(df, _run_bt_slice, _space, n_trials=args.tune,
+                                 n_jobs=args.tune_jobs, verbose=True)
+            report["stages"]["tune"] = tune_rep.to_dict()
+            if tune_rep.best_params:
+                print(f"  Adopting tuned params: {tune_rep.best_params} "
+                      f"(train {tune_rep.train_sharpe:.3f} / "
+                      f"test {tune_rep.test_sharpe:.3f})")
+                user_params = dict(tune_rep.best_params)
+                report["params"] = dict(user_params)
+                metrics, trades, _equity = run_bt(user_params)
+        else:
+            report["stages"]["tune"] = {"skipped": "no numeric params"}
+    else:
+        report["stages"]["tune"] = {"skipped": "off (--tune 0)"}
     print(f"  Net PnL: ${metrics.get('net_pnl', 0):.2f}")
     # max_drawdown is stored as a fraction (-0.04 = -4%); convert to percent.
     max_dd_pct = metrics.get('max_drawdown', 0) * 100
@@ -754,6 +795,11 @@ Examples:
     parser.add_argument("--auto-iterate", type=int, default=0, metavar="N",
                         help="R024: if WF verdict != ACCEPT, run up to N refinement rounds "
                              "and adopt the best OOS params (0 = off)")
+    parser.add_argument("--tune", type=int, default=0, metavar="N",
+                        help="Optuna TPE fine-tune before WF: N trials on train split, "
+                             "honest holdout re-eval, adopts winner (0 = off)")
+    parser.add_argument("--tune-jobs", type=int, default=1,
+                        help="Parallel tuner trials (1 = deterministic serial)")
     parser.add_argument("--tick-mode", default="off", choices=["off", "synthetic", "real"],
                         help="Execution realism: OHLC bars (off), intra-bar tick sim "
                              "(synthetic), real ticks when available (real=Dukascopy/MT5)")
