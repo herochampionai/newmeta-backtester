@@ -241,10 +241,51 @@ def load_data(symbol: str, timeframe: str, source: str = "auto",
 
 
 def _make_strategy(strategy_name: str, params: dict):
-    """Factory for strategy classes."""
-    from strategies.adx import ADX_Strategy
+    """Factory for strategy classes.
+
+    Fast path for adx (back-compat), then dynamic loading: any
+    strategies.<module> exposing a BaseStrategy subclass — including
+    generated_* files from analysis.strategy_builder — resolves by module
+    name, class name, or name-without-_strategy suffix (case-insensitive).
+    """
     if strategy_name == "adx":
+        from strategies.adx import ADX_Strategy
         return ADX_Strategy(name="adx", params=params)
+
+    import importlib
+    from strategies._base import BaseStrategy
+
+    def _norm(s: str) -> str:
+        return s.lower().replace("_strategy", "")
+
+    target = _norm(strategy_name)
+    # 1) module strategies.<name>
+    for mod_name in (f"strategies.{strategy_name}", f"strategies.generated_{strategy_name}"):
+        try:
+            mod = importlib.import_module(mod_name)
+        except ImportError:
+            continue
+        cands = [v for v in vars(mod).values()
+                 if isinstance(v, type) and issubclass(v, BaseStrategy) and v is not BaseStrategy]
+        if not cands:
+            continue
+        for cls in cands:
+            if _norm(cls.__name__) == target or cls.__name__ == strategy_name:
+                return cls(name=strategy_name, params=params)
+        return cands[0](name=strategy_name, params=params)
+    # 2) scan all strategy modules for a matching class name
+    from pathlib import Path as _P
+    for f in sorted(_P("strategies").glob("*.py")):
+        if f.stem.startswith(("_",)):
+            continue
+        try:
+            mod = importlib.import_module(f"strategies.{f.stem}")
+        except Exception:
+            continue
+        for attr in vars(mod).values():
+            if (isinstance(attr, type) and issubclass(attr, BaseStrategy)
+                    and attr is not BaseStrategy and _norm(attr.__name__) == target):
+                return attr(name=strategy_name, params=params)
     raise ValueError(f"Unknown strategy: {strategy_name}")
 
 
