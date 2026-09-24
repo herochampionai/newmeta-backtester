@@ -91,8 +91,14 @@ def deep_backtest(df: pd.DataFrame,
         ticks = synthesize_ticks_from_bars(df, ticks_per_bar=ticks_per_bar)
         tick_source = "synthetic_ticks"
 
-    # 2. Get spreads
-    if use_real_spreads:
+    # 2. Get spreads — bar-embedded real spreads first (R019 Dukascopy
+    # caches carry spread_pips), then MT5, then static default.
+    if "spread_pips" in df.columns:
+        spreads = (df["spread_pips"].astype(float) * pip_size).reindex(
+            df.index, method="ffill").fillna(method="bfill")
+        if spreads.isna().all():
+            spreads = default_spread_series(df.index)
+    elif use_real_spreads:
         real_spreads = get_spreads_mt5(symbol, n_days=7)
         if real_spreads is not None and len(real_spreads) > 0:
             spreads = real_spreads.reindex(df.index, method="ffill").fillna(method="bfill")

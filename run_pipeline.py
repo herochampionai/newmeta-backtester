@@ -240,6 +240,30 @@ def load_data(symbol: str, timeframe: str, source: str = "auto",
         return None
 
 
+def _exec_kwargs(df, args) -> dict:
+    """Live-like execution config shared by every run_full call site.
+
+    Spread: explicit --spread-pips wins; else the bar-embedded real mean
+    (R019 Dukascopy spread_pips); else a 0.5-pip FX default. Zero-spread
+    backtests are a fantasy — this keeps every stage honest.
+    """
+    spread = args.spread_pips
+    if spread is None:
+        if "spread_pips" in df.columns:
+            spread = float(df["spread_pips"].mean())
+        else:
+            spread = 0.5
+    return {
+        "commission_pips": args.commission_pips,
+        "slippage_pips": args.slippage_pips,
+        "spread_pips": float(spread),
+        "tick_mode": args.tick_mode,
+        "pip_size": 0.01 if "JPY" in args.symbol.upper() else 0.0001,
+        "symbol": args.symbol,
+        "leverage": args.leverage,
+    }
+
+
 def _make_strategy(strategy_name: str, params: dict):
     """Factory for strategy classes.
 
@@ -366,7 +390,8 @@ def run_pipeline(args) -> int:
         r = run_full(df,
                      {args.strategy: (sg.entries.values.astype(int),
                                       sg.exits.values.astype(int))},
-                     init_cash=args.capital, symbol=args.symbol, strict_data=False)
+                     init_cash=args.capital, **_exec_kwargs(df, args),
+                     strict_data=False)
         return r.get("metrics", {}), r.get("trades", pd.DataFrame())
 
     metrics, trades = run_bt(user_params)
@@ -377,6 +402,11 @@ def run_pipeline(args) -> int:
     print(f"  Trades: {len(trades)}, Win rate: {metrics.get('win_rate', 0):.1%}")
     registry.gauge("backtest_net_pnl").set(metrics.get("net_pnl", 0))
     registry.gauge("backtest_sharpe").set(metrics.get("sharpe", 0))
+    _exec = _exec_kwargs(df, args)
+    report["exec"] = {k: v for k, v in _exec.items()}
+    print(f"  Exec: tick_mode={_exec['tick_mode']}, spread={_exec['spread_pips']:.2f}p, "
+          f"slippage={_exec['slippage_pips']:.2f}p, commission={_exec['commission_pips']:.2f}p, "
+          f"lev={_exec['leverage']:.0f}x")
 
     # ---- 4. Walk-Forward v2 ----
     print("\n[4/8] R004 Walk-Forward v2…")
@@ -387,7 +417,8 @@ def run_pipeline(args) -> int:
         sg = s.generate(df)
         return run_full(df,
                         {args.strategy: (sg.entries.values.astype(int), sg.exits.values.astype(int))},
-                        init_cash=args.capital, symbol=args.symbol, strict_data=False
+                        init_cash=args.capital, **_exec_kwargs(df, args),
+                        strict_data=False
                         ).get("metrics", {}).get("sharpe", 0)
 
     # Build param spec: vary each user param ±50% in 5 steps.
@@ -578,7 +609,7 @@ def run_pipeline(args) -> int:
                 return run_full(d,
                                 {args.strategy: (sg.entries.values.astype(int),
                                                  sg.exits.values.astype(int))},
-                                init_cash=args.capital, symbol=args.symbol,
+                                init_cash=args.capital, **_exec_kwargs(d, args),
                                 strict_data=False).get("metrics", {})
             return fn
 
@@ -720,6 +751,17 @@ Examples:
     parser.add_argument("--auto-iterate", type=int, default=0, metavar="N",
                         help="R024: if WF verdict != ACCEPT, run up to N refinement rounds "
                              "and adopt the best OOS params (0 = off)")
+    parser.add_argument("--tick-mode", default="off", choices=["off", "synthetic", "real"],
+                        help="Execution realism: OHLC bars (off), intra-bar tick sim "
+                             "(synthetic), real ticks when available (real=Dukascopy/MT5)")
+    parser.add_argument("--slippage-pips", type=float, default=0.3,
+                        help="Adverse slippage per fill in pips")
+    parser.add_argument("--spread-pips", type=float, default=None,
+                        help="Fixed spread override; default auto = bar mean spread_pips "
+                             "if present else 0.5")
+    parser.add_argument("--commission-pips", type=float, default=0.7,
+                        help="Commission per trade in pips")
+    parser.add_argument("--leverage", type=float, default=30.0, help="Account leverage")
     parser.add_argument("--skip-stress", action="store_true")
     parser.add_argument("--skip-sensitivity", action="store_true")
     parser.add_argument("--skip-significance", action="store_true")

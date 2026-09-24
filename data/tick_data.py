@@ -98,18 +98,62 @@ def synthesize_ticks_from_bars(df: pd.DataFrame, ticks_per_bar: int = 20,
     return out
 
 
+def fetch_ticks_dukascopy(symbol: str, start: str | None = None,
+                           end: str | None = None) -> tuple[pd.DataFrame | None, dict]:
+    """Load real Dukascopy ticks from local parquet (R019 cache).
+
+    Returns (df, info) with the standard tick frame
+    (time index + bid/ask/last/volume/flags), or (None, info) when the
+    symbol has no cached tick partitions.
+    """
+    from pathlib import Path
+    sym = symbol.upper().replace("/", "")
+    symbol_dir = Path("data/ticks_parquet") / f"symbol={sym}"
+    if not symbol_dir.exists():
+        return None, {"source": "dukascopy_miss", "reason": "no partitions"}
+    dfs = []
+    for part in sorted(symbol_dir.glob("*/ticks.parquet")):
+        try:
+            dfs.append(pd.read_parquet(part))
+        except Exception:
+            continue
+    if not dfs:
+        return None, {"source": "dukascopy_miss", "reason": "unreadable partitions"}
+    t = pd.concat(dfs, ignore_index=True).sort_values("timestamp")
+    if start:
+        t = t[t["timestamp"] >= pd.Timestamp(start, tz="UTC")]
+    if end:
+        t = t[t["timestamp"] <= pd.Timestamp(end, tz="UTC")]
+    if len(t) == 0:
+        return None, {"source": "dukascopy_miss", "reason": "empty range"}
+    mid = (t["bid"] + t["ask"]) / 2.0
+    out = pd.DataFrame({
+        "time": t["timestamp"],
+        "bid": t["bid"].values,
+        "ask": t["ask"].values,
+        "last": mid.values,
+        "volume": (t["bid_volume"] + t["ask_volume"]).values,
+        "flags": 0,
+    }).set_index("time").sort_index()
+    return out, {"source": "dukascopy_ticks", "rows": len(out),
+                 "range": (str(out.index[0]), str(out.index[-1]))}
+
+
 def fetch_ticks_with_priority(symbol: str, start: str, end: str | None = None,
                                prefer_ticks: bool = True,
                                ticks_per_bar: int = 20) -> tuple[pd.DataFrame, str, dict]:
-    """Try real MT5 ticks → synthetic ticks from cached bars.
+    """Try real MT5 ticks → Dukascopy parquet → synthetic ticks from cached bars.
 
     Returns (df, source, info).
-    source: 'mt5_ticks' | 'synthetic_ticks'
+    source: 'mt5_ticks' | 'dukascopy_ticks' | 'synthetic_ticks'
     """
     if prefer_ticks:
         df, info = fetch_ticks_mt5(symbol, start, end)
         if df is not None:
             return df, "mt5_ticks", info
+        duka, dinfo = fetch_ticks_dukascopy(symbol, start, end)
+        if duka is not None:
+            return duka, "dukascopy_ticks", dinfo
     # Fallback to cached bars → synthesize ticks
     from data.cache import load as load_cache
     try:
