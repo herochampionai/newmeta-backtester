@@ -593,22 +593,54 @@ def apply_corporate_actions_ticks(
     symbol: str,
     corp_actions: dict
 ) -> pd.DataFrame:
-    """Apply corporate actions (splits, dividends) to tick data."""
+    """Apply corporate actions (splits, dividends) to tick or OHLC data.
+
+    corp_actions format:
+        {"splits": {"2024-08-30": 10.0},       # pre-date prices /= ratio
+         "dividends": {"2024-05-10": 0.24}}    # pre-ex-date prices -= cash
+
+    Works on tick frames (timestamp/bid/ask cols) and OHLC frames
+    (DatetimeIndex + open/high/low/close cols). Returns adjusted copy.
+    """
     if df is None or len(df) == 0 or not corp_actions:
         return df
 
-    splits = corp_actions.get("splits", {})
-    if not splits:
+    splits = corp_actions.get("splits", {}) or {}
+    dividends = corp_actions.get("dividends", {}) or {}
+    if not splits and not dividends:
         return df
 
     out = df.copy()
+    if "timestamp" in out.columns:
+        times = pd.to_datetime(out["timestamp"], utc=True)
+        price_cols = [c for c in ("bid", "ask") if c in out.columns]
+        use_index_mask = False
+    else:
+        times = None
+        price_cols = [c for c in ("open", "high", "low", "close") if c in out.columns]
+        use_index_mask = True
+    if not price_cols:
+        print(f"Warning: no price columns to adjust for {symbol}")
+        return df
+
+    def _mask_before(date_str: str):
+        ts = pd.Timestamp(date_str, tz="UTC")
+        if use_index_mask:
+            idx = pd.to_datetime(out.index, utc=True)
+            return idx < ts
+        return times < ts
+
     for date_str, ratio in sorted(splits.items()):
         try:
-            ts = pd.Timestamp(date_str, tz="UTC")
-            mask = out["timestamp"] < ts
-            out.loc[mask, ["bid", "ask"]] /= float(ratio)
+            out.loc[_mask_before(date_str), price_cols] /= float(ratio)
         except Exception as e:
             print(f"Warning: Failed to apply split {date_str}: {e}")
+
+    for date_str, cash in sorted(dividends.items()):
+        try:
+            out.loc[_mask_before(date_str), price_cols] -= float(cash)
+        except Exception as e:
+            print(f"Warning: Failed to apply dividend {date_str}: {e}")
 
     return out
 

@@ -42,6 +42,8 @@ class GapReport:
     max_gap_hours: float
     gap_times: list[str]
     severity: str  # "none", "low", "medium", "high", "critical"
+    expected_gaps: int = 0  # gaps spanning Sat/Sun (scheduled FX close)
+    unexpected_gaps: int = 0  # gaps inside the trading week (real holes)
 
 
 @dataclass
@@ -137,13 +139,26 @@ def analyze_gaps(df: pd.DataFrame) -> GapReport:
     max_gap_bars = int(max_gap / med) if med_seconds > 0 else 0
     gap_pct = len(gaps) / len(diffs) * 100
 
-    if gap_pct == 0:
+    # R021: session-aware gaps. A gap whose interval covers Saturday or
+    # Sunday is the scheduled FX weekend close — expected, not a data hole.
+    # Severity is scored on UNEXPECTED (in-week) gaps only.
+    expected = 0
+    for ts, width in gaps.items():
+        start = ts - width
+        # any calendar day in [start, ts] falling on Sat/Sun?
+        days = pd.date_range(start=start.normalize(), end=ts.normalize(), freq="D")
+        if any(d.weekday() >= 5 for d in days):
+            expected += 1
+    unexpected = len(gaps) - expected
+    unexp_pct = unexpected / len(diffs) * 100
+
+    if unexp_pct == 0:
         severity = "none"
-    elif gap_pct < 0.5:
+    elif unexp_pct < 0.5:
         severity = "low"
-    elif gap_pct < 2.0:
+    elif unexp_pct < 2.0:
         severity = "medium"
-    elif gap_pct < 5.0:
+    elif unexp_pct < 5.0:
         severity = "high"
     else:
         severity = "critical"
@@ -154,7 +169,9 @@ def analyze_gaps(df: pd.DataFrame) -> GapReport:
         max_gap_bars=max_gap_bars,
         max_gap_hours=round(max_gap.total_seconds() / 3600, 2),
         gap_times=gap_times[:20],
-        severity=severity
+        severity=severity,
+        expected_gaps=expected,
+        unexpected_gaps=unexpected,
     )
 
 

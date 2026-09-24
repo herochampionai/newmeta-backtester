@@ -643,6 +643,27 @@ def run_pipeline(args) -> int:
         "trades": len(trades),
         "win_rate": float(metrics.get("win_rate", 0) or 0),
     }
+
+    # ---- R025 Review gate: numbers -> explicit PASS/FAIL ----
+    print("\n[gate] R025 Review gate…")
+    from analysis.review_gate import review
+    _wf = report["stages"].get("walkforward", {})
+    _sg = report["stages"].get("significance", {})
+    _st = report["stages"].get("stress", {})
+    _gate = review(
+        backtest_metrics=report["stages"]["backtest"],
+        wf_verdict=_wf.get("verdict", "UNKNOWN"),
+        wf_passed=_wf.get("passed", 0),
+        wf_windows=_wf.get("windows", 0),
+        psr_verdict=_sg.get("psr_verdict", "UNKNOWN"),
+        dsr_verdict=_sg.get("dsr_verdict", "UNKNOWN"),
+        stress_verdict=_st.get("verdict", "UNKNOWN"),
+        trades=len(trades))
+    print(f"  Gate: {'PASS' if _gate['pass'] else 'FAIL'} ({_gate['summary']})")
+    for _r in _gate["reasons"]:
+        print(f"    {_r}")
+    registry.counter("review_gate", labels={"result": "pass" if _gate["pass"] else "fail"}).inc()
+    report["stages"]["gate"] = _gate
     report["elapsed_sec"] = round(time.time() - start_time, 1)
 
     # IMP-2: single consolidated artifact for audit/proof trail
