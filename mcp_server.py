@@ -278,5 +278,66 @@ def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str =
                    "report": summary})
 
 
+@mcp.tool()
+def screen_universe(strategies_json: str = '[{"name": "adx", "params": {}}]',
+                    symbols_json: str | None = None, timeframe: str = "H1",
+                    criterion: str = "composite", jobs: int = 1) -> dict:
+    """Strategy x symbol matrix: which ticker fits which strategy. SLOW
+    (~10-60s depending on universe). Returns best_per_strategy and
+    best_per_symbol tables."""
+    from analysis.universe_screener import screen, discover_symbols
+    strategies = json.loads(strategies_json)
+    symbols = json.loads(symbols_json) if symbols_json else discover_symbols(timeframe)
+    rep = screen(strategies, symbols=symbols, timeframe=timeframe,
+                 criterion=criterion, jobs=jobs, verbose=False)
+    return _clean(rep.to_dict())
+
+
+@mcp.tool()
+def study_criterion(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                    grid_json: str = "{}", criteria_json: str | None = None,
+                    capital: float = 10000.0, source: str = "auto") -> dict:
+    """Which selection criterion picks OOS winners? SLOW (~30-60s). Returns
+    criteria ranked by top-1 regret (lower is better) with rank correlations."""
+    from analysis.criterion_study import study_criteria
+    df = _load(symbol, timeframe, source)
+    grid = json.loads(grid_json) if isinstance(grid_json, str) else grid_json
+    if isinstance(grid, dict):
+        grid = [grid]
+    if not grid:
+        return {"error": "empty param grid (pass a list of param dicts)"}
+
+    def run_bt(params, d):
+        m, _ = _backtest_df(d, strategy, params, capital, symbol)
+        return m
+
+    rep = study_criteria(df, run_bt, grid,
+                         criteria=json.loads(criteria_json) if criteria_json else None,
+                         verbose=False)
+    return _clean(rep.to_dict())
+
+
+@mcp.tool()
+def fine_tune(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+              space_json: str = "{}",
+              n_trials: int = 20, seed: int = 7, capital: float = 10000.0,
+              source: str = "auto") -> dict:
+    """Optuna TPE parameter search with honest train/test reporting. SLOW
+    (~20-120s). Returns best params + train/test Sharpe + overfit gap."""
+    from analysis.fine_tuner import fine_tune as _tune
+    df = _load(symbol, timeframe, source)
+    space = json.loads(space_json)
+    space = {k: tuple(v) for k, v in space.items()}
+
+    def run_bt(params, d):
+        m, t = _backtest_df(d, strategy, params, capital, symbol)
+        m = dict(m)
+        m["trades"] = len(t)
+        return m
+
+    rep = _tune(df, run_bt, space, n_trials=n_trials, seed=seed, verbose=False)
+    return _clean(rep.to_dict())
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")
