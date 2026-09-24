@@ -1,7 +1,12 @@
 """Walk-forward analysis. Splits data into rolling train/test windows,
-optimizes on train, validates on test, collects out-of-sample metrics."""
+optimizes on train, validates on test, collects out-of-sample metrics.
+
+Roadmap B1 (Simons anomaly rule): idle-capable strategies log idle days.
+Each window now also tracks ``idle_day_count`` — the number of days in
+the test window where no entry signals fired.  Idle days are never
+forced to trade; the strategy must beat the always-on baseline."""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pandas as pd
 from backtester.metrics import metrics_from_returns
 
@@ -15,6 +20,8 @@ class WFWindow:
     train_metrics: dict
     test_metrics: dict
     params: dict
+    idle_day_count: int = 0
+    idle_days: list[str] = field(default_factory=list)
 
 
 def walk_forward(df: pd.DataFrame, strategy_name: str, param_spec: dict,
@@ -63,7 +70,16 @@ def walk_forward(df: pd.DataFrame, strategy_name: str, param_spec: dict,
         _, m_tr = run_direction(train, sig_tr.entries, sig_tr.direction)
         sig_te = cls(params=best).generate(test)
         _, m_te = run_direction(test, sig_te.entries, sig_te.direction)
-        out.append(WFWindow(cursor, tr_end, tr_end, te_end, m_tr, m_te, best))
+
+        # Idle-day tracking (Roadmap B1): count days with no entries in test
+        test_entries = sig_te.entries.fillna(False).astype(bool)
+        entry_dates = set(test_entries[test_entries].index.strftime("%Y-%m-%d"))
+        all_dates = set(test.index.strftime("%Y-%m-%d"))
+        idle_days = sorted(all_dates - entry_dates)
+        idle_count = len(idle_days)
+
+        out.append(WFWindow(cursor, tr_end, tr_end, te_end, m_tr, m_te, best,
+                            idle_day_count=idle_count, idle_days=idle_days))
         cursor += pd.DateOffset(months=roll_months)
 
     return out
@@ -82,5 +98,6 @@ def wf_summary(windows: list) -> pd.DataFrame:
             "train_calmar": w.train_metrics.get("calmar"),
             "test_calmar": w.test_metrics.get("calmar"),
             "test_max_dd": w.test_metrics.get("max_drawdown"),
+            "idle_day_count": w.idle_day_count,
         })
     return pd.DataFrame(rows)

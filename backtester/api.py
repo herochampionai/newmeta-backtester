@@ -30,7 +30,7 @@ from data.live_fetcher import fetch_with_priority
 from data.mt5_export import resolve_terminal
 from backtester.engine_full import run_full, GRID_NONE
 from backtester.grid_recovery import GRID_LOSS_AND_PROFIT
-from strategies import STRATEGY_REGISTRY
+from strategies import STRATEGY_REGISTRY, TRADABLE_STRATEGY_REGISTRY, COMPOSITE_STRATEGY_REGISTRY
 from core.regime import RegimeAwareStrategy
 from core.loader import load_any_strategy
 
@@ -89,13 +89,13 @@ def _fetch_data(symbol, timeframe, start, end, mt5_terminal):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "strategies": list(STRATEGY_REGISTRY.keys())}
+    return {"status": "ok", "strategies": list(TRADABLE_STRATEGY_REGISTRY.keys()), "composite": list(COMPOSITE_STRATEGY_REGISTRY.keys())}
 
 
 @app.get("/strategies")
 def list_strategies():
     out = {}
-    for name, cls in STRATEGY_REGISTRY.items():
+    for name, cls in TRADABLE_STRATEGY_REGISTRY.items():
         out[name] = {
             "name": cls.__name__,
             "doc": (cls.__doc__ or "").strip()[:200],
@@ -197,3 +197,4 @@ if __name__ == "__main__":
     import uvicorn
     print("[Newmeta Backtester API] Starting on http://127.0.0.1:8765")
     uvicorn.run(app, host="127.0.0.1", port=8765, log_level="info")
+

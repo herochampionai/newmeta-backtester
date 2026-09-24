@@ -2,6 +2,8 @@
 Models the EA's behavior when:
   - MakeOrdersGrid > 0  (grid in loss / profit / both)
   - Per-strategy recovery lot multiplier after losses
+  - Surgical feature toggles (Roadmap B4): recovery_restart,
+    basket_money_tp, profit_lock_trail, carry_adjusted_tp — all default OFF.
 
 State machine per strategy:
   - Each strategy has its own grid of layers
@@ -68,6 +70,11 @@ class GridState:
     last_close_was_loss: bool = False
     last_close_pnl: float = 0.0
     last_close_lots: float = 0.0  # for recovery sizing
+    # Surgical feature tracking (B4)
+    recovery_cooldown_remaining: int = 0       # bars to wait before re-entering after shed
+    basket_peak_pnl: float = 0.0                # peak cumulative PnL of open basket (for profit_lock_trail)
+    basket_closed_peak: float = 0.0           # peak PnL ever banked by basket_money_tp
+    carry_offset: float = 0.0                   # funding/carry adjustment to TP (for carry_adjusted_tp)
 
 
 class GridRecoveryManager:
@@ -101,7 +108,19 @@ class GridRecoveryManager:
                  base_lot: float = 0.1,
                  pip_size: float = 0.0001,
                  contract_size: float = 100_000,
-                 per_strategies: dict | None = None):
+                 per_strategies: dict | None = None,
+                 # Surgical features (B4) — all default OFF
+                 recovery_restart_enabled: bool = False,
+                 recovery_restart_size_mult: float = 0.5,
+                 recovery_restart_strictness_bonus: int = 1,
+                 recovery_restart_cooldown_bars: int = 12,
+                 basket_money_tp_enabled: bool = False,
+                 basket_take_profit_usd: float = 50.0,
+                 profit_lock_trail_enabled: bool = False,
+                 profit_lock_pct: float = 60.0,
+                 carry_adjusted_tp_enabled: bool = False,
+                 rollover_window_hours: int = 8,
+                 tp_extension_pct: float = 25.0):
         self.grid_mode = grid_mode
         self.pips_between_orders = pips_between_orders
         self.grid_lot_multiplier = grid_lot_multiplier
@@ -115,6 +134,18 @@ class GridRecoveryManager:
         self.contract_size = contract_size
         self.states: dict[str, GridState] = {}
         self.equity_curve: list[tuple[int, float, str]] = []  # (bar, equity_delta, strategy)
+        # Surgical features (B4)
+        self.recovery_restart_enabled = recovery_restart_enabled
+        self.recovery_restart_size_mult = recovery_restart_size_mult
+        self.recovery_restart_strictness_bonus = recovery_restart_strictness_bonus
+        self.recovery_restart_cooldown_bars = recovery_restart_cooldown_bars
+        self.basket_money_tp_enabled = basket_money_tp_enabled
+        self.basket_take_profit_usd = basket_take_profit_usd
+        self.profit_lock_trail_enabled = profit_lock_trail_enabled
+        self.profit_lock_pct = profit_lock_pct
+        self.carry_adjusted_tp_enabled = carry_adjusted_tp_enabled
+        self.rollover_window_hours = rollover_window_hours
+        self.tp_extension_pct = tp_extension_pct
 
     def _state(self, strategy: str) -> GridState:
         if strategy not in self.states:
@@ -129,12 +160,19 @@ class GridRecoveryManager:
         if (self.recovery_mode == RECOVERY_LAST_CLOSING and
                 st.last_close_was_loss and layer_index == 0):
             base *= self.recovery_lot_multiplier
+        # Surgical: recovery_restart — after a shed, restart smaller & slower
+        if (self.recovery_restart_enabled and
+                st.recovery_cooldown_remaining > 0 and layer_index == 0):
+            base *= self.recovery_restart_size_mult
         return base
 
     def on_bar_close(self, strategy: str, signal_direction: int,
                      bar_high: float, bar_low: float, bar_close: float,
                      bar_index: int, commission_pips: float = 0.7,
-                     slippage_pips: float = 0.3) -> list[GridClosedTrade]:
+                     slippage_pips: float = 0.3,
+                     spread_pips: float = 0.0,
+                     commission_pct: float = 0.0,
+                     bar_timestamp: pd.Timestamp | None = None) -> list[GridClosedTrade]:
         """Process one bar: handle grid layers + signal.
         signal_direction ∈ {-1, 0, +1}; 0 = no signal this bar.
 
@@ -146,11 +184,30 @@ class GridRecoveryManager:
         if st.open_layers:
             # Compute current PnL of all layers
             pnl = self._current_grid_pnl(st.open_layers, bar_close)
+            # Update basket peak for profit_lock_trail
+            st.basket_peak_pnl = max(st.basket_peak_pnl, pnl)
             should_close = False
             reason = ""
-            if self.grid_take_profit > 0 and pnl >= self.grid_take_profit:
+            # Surgical: basket_money_tp — close once cumulative basket $ hits threshold
+            if (self.basket_money_tp_enabled and
+                    pnl >= self.basket_take_profit_usd):
                 should_close = True
-                reason = "tp_grid"
+                reason = "basket_money_tp"
+            # Surgical: profit_lock_trail — close when pnl drops below lock floor
+            elif (self.profit_lock_trail_enabled and
+                    st.basket_peak_pnl > 0 and
+                    pnl <= st.basket_peak_pnl * (1 - self.profit_lock_pct / 100.0)):
+                should_close = True
+                reason = "profit_lock_trail"
+            # Surgical: carry_adjusted_tp — extend grid TP near funding rollover
+            effective_grid_tp = self.grid_take_profit
+            if (self.carry_adjusted_tp_enabled and
+                    bar_timestamp is not None and
+                    self._in_rollover_window(bar_timestamp)):
+                effective_grid_tp = self.grid_take_profit * (1 + self.tp_extension_pct / 100.0)
+            if self.grid_take_profit > 0 and pnl >= effective_grid_tp:
+                should_close = True
+                reason = "tp_grid_carry" if effective_grid_tp > self.grid_take_profit else "tp_grid"
             elif self.grid_stop_loss > 0 and pnl <= -self.grid_stop_loss:
                 should_close = True
                 reason = "sl_grid"
@@ -162,9 +219,22 @@ class GridRecoveryManager:
                 reason = "reverse_signal"
             if should_close:
                 tr = self._close_grid(st, bar_close, bar_index, reason,
-                                       commission_pips, slippage_pips)
+                                       commission_pips, slippage_pips,
+                                       spread_pips, commission_pct)
                 closed.append(tr)
                 self.equity_curve.append((bar_index, tr.pnl, strategy))
+                # Surgical: recovery_restart — set cooldown after a shed (loss close)
+                if self.recovery_restart_enabled and tr.pnl < 0:
+                    st.recovery_cooldown_remaining = self.recovery_restart_cooldown_bars
+                # Surgical: basket_money_tp — track peak banked profit for profit_lock_trail
+                if reason in ("basket_money_tp", "tp_grid", "profit_lock_trail"):
+                    st.basket_closed_peak = max(st.basket_closed_peak, st.basket_peak_pnl)
+                # Reset basket peak after close
+                st.basket_peak_pnl = 0.0
+
+        # Decrement recovery cooldown
+        if st.recovery_cooldown_remaining > 0:
+            st.recovery_cooldown_remaining -= 1
 
         # 2. If signal fires
         if signal_direction != 0:
@@ -175,14 +245,14 @@ class GridRecoveryManager:
                                    entry_price=bar_close, lot=lot, bar_index=bar_index,
                                    layer_index=0)
                 st.open_layers.append(layer)
-                self._apply_entry_costs(st, commission_pips, slippage_pips)
+                self._apply_entry_costs(st, commission_pips, slippage_pips, spread_pips)
             elif self.grid_mode != GRID_NONE:
                 # Grid existing layers — only when grid mode is enabled
                 new_layer = self._maybe_open_grid_layer(
                     st, signal_direction, bar_high, bar_low, bar_close, bar_index)
                 if new_layer:
                     st.open_layers.append(new_layer)
-                    self._apply_entry_costs(st, commission_pips, slippage_pips)
+                    self._apply_entry_costs(st, commission_pips, slippage_pips, spread_pips)
 
         return closed
 
@@ -235,15 +305,32 @@ class GridRecoveryManager:
             total += pips * self.pip_size * l.lot * self.contract_size
         return total
 
-    def _apply_entry_costs(self, st: GridState, commission_pips: float, slippage_pips: float) -> None:
+    def _in_rollover_window(self, ts: pd.Timestamp) -> bool:
+        """Check if *ts* falls near a funding rollover boundary.
+
+        Funding events occur every ``rollover_window_hours`` (default 8h
+        for crypto: 00:00, 08:00, 16:00 UTC).  Returns True when the bar
+        is within the last hour **before or AT** a rollover boundary
+        (carry is being settled and TP extension applies).
+        """
+        if self.rollover_window_hours <= 0:
+            return False
+        boundary = ts.ceil(f"{self.rollover_window_hours}h")
+        if boundary == ts:
+            return True
+        dist = (boundary - ts).total_seconds()
+        return 0 < dist <= 3600
+
+    def _apply_entry_costs(self, st: GridState, commission_pips: float, slippage_pips: float, spread_pips: float = 0.0) -> None:
         """Subtract entry costs from the most recent layer's PnL."""
         if not st.open_layers:
             return
-        cost_per_lot = (commission_pips + slippage_pips) * self.pip_size * self.contract_size
+        cost_per_lot = (commission_pips + slippage_pips + spread_pips) * self.pip_size * self.contract_size
         st.open_layers[-1]._entry_cost = cost_per_lot * st.open_layers[-1].lot
 
     def _close_grid(self, st: GridState, exit_price: float, bar_index: int,
-                     reason: str, commission_pips: float, slippage_pips: float) -> GridClosedTrade:
+                     reason: str, commission_pips: float, slippage_pips: float,
+                     spread_pips: float = 0.0, commission_pct: float = 0.0) -> GridClosedTrade:
         """Close all open layers of the strategy grid."""
         layers = list(st.open_layers)
         lots = [l.lot for l in layers]
@@ -255,7 +342,7 @@ class GridRecoveryManager:
         gross_pnl = pips_moved * self.pip_size * sum(lots) * self.contract_size
         # Commission + slippage on entry and exit
         total_lots = sum(lots)
-        cost_per_lot = (commission_pips + slippage_pips) * self.pip_size * self.contract_size
+        cost_per_lot = (commission_pips + slippage_pips + spread_pips) * self.pip_size * self.contract_size
         total_costs = cost_per_lot * total_lots * 2  # entry + exit
         net_pnl = gross_pnl - total_costs
         tr = GridClosedTrade(
@@ -285,7 +372,7 @@ class GridRecoveryManager:
         wins = pnls[pnls > 0]
         losses = pnls[pnls < 0]
         n = len(pnls)
-        return {
+        s = {
             "n_grid_trades": n,
             "grid_total_pnl": float(pnls.sum()),
             "grid_win_rate": float((pnls > 0).mean()),
@@ -296,6 +383,20 @@ class GridRecoveryManager:
             "grid_largest_loss": float(pnls.min()),
             "grid_max_layers": max((t.layers for t in trades), default=0),
         }
+        # Surgical feature close-reason breakdown
+        reasons = {}
+        for t in trades:
+            reasons[t.reason] = reasons.get(t.reason, 0) + 1
+        s["close_reasons"] = reasons
+        # Surgical: recovery_restart stats
+        if self.recovery_restart_enabled:
+            restarts = sum(1 for t in trades if t.reason == "sl_grid")
+            s["recovery_restart_sheds"] = restarts
+        # Surgical: basket_money_tp stats
+        if self.basket_money_tp_enabled:
+            basket_closes = sum(1 for t in trades if t.reason == "basket_money_tp")
+            s["basket_money_tp_closes"] = basket_closes
+        return s
 
     def to_trades_df(self) -> pd.DataFrame:
         trades = self.total_closed_trades()

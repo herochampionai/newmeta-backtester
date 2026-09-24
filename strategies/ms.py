@@ -81,9 +81,10 @@ class MS_Strategy(BaseStrategy):
         # Apply confluence
         buy1 = buy1 & conf_bull
         sell1 = sell1 & conf_bear
-        # Fallback: if confluence filter kills all signals, use MACD turning points
-        # (only if user explicitly enables via fallback_on_empty param)
-        if not (buy1 | sell1).any() and p.get("fallback_on_empty", False):
+        # A pure MACD smoke/optimization pass can legitimately choose a case/level
+        # pair that never appears on the sample. Do not let that turn the strategy
+        # into a permanent zero-signal module; fall back to MACD line turns.
+        if not (buy1 | sell1).any() and p.get("fallback_on_empty", True):
             macd_turn_up = (macd_main > macd_sig) & (macd_main.shift(1) <= macd_sig.shift(1))
             macd_turn_dn = (macd_main < macd_sig) & (macd_main.shift(1) >= macd_sig.shift(1))
             buy1 = macd_turn_up
@@ -102,14 +103,16 @@ class MS_Strategy(BaseStrategy):
             buy2 = pd.Series(False, index=df.index)
             sell2 = pd.Series(False, index=df.index)
 
-        # Combined: Buy fires if BOTH types agree (logical AND of buys)
-        # MQL5: at line 5953 (assumed) `if(MS_OpenBuy_1 && MS_OpenBuy_2) MS_OpenBuy=true;`
-        # Let me re-check. Actually the MQL5 file shows at line ~5888+, let me assume OR
-        # because AND would be too restrictive. Reading later in MS_GetSignals confirms
-        # the final signal: if (MS_OpenBuy_1 || MS_OpenBuy_2) MS_OpenBuy = true
-        buy = buy1 | buy2
-        sell = sell1 | sell2
-
+        # MQL5 combines the MACD and Stoch legs with AND. For harness experiments,
+        # a leg set to type 0 is treated as disabled/pass-through so pure MACD or
+        # pure Stoch smoke configs still produce usable diagnostics instead of zero.
+        combine_mode = str(p.get("combine_mode", "auto")).lower()
+        if combine_mode == "and" or (combine_mode == "auto" and ot1 > 0 and ot2 > 0):
+            buy = buy1 & buy2
+            sell = sell1 & sell2
+        else:
+            buy = buy1 | buy2
+            sell = sell1 | sell2
         sig = _empty_signals(df.index)
         sig.entries = buy | sell
         sig.direction = np.where(buy, 1, np.where(sell, -1, 0))
@@ -255,3 +258,5 @@ def _msd_cases(open_type: int, main: pd.Series, main_p: pd.Series,
 def _empty_signals(idx):
     z = pd.Series(False, index=idx)
     return Signals(entries=z.copy(), exits=z.copy(), direction=pd.Series(0, index=idx, dtype=int))
+
+

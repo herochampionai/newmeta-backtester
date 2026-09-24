@@ -42,46 +42,49 @@ def fetch_ticks_mt5(symbol: str, start: str, end: str | None = None,
 
 
 def synthesize_ticks_from_bars(df: pd.DataFrame, ticks_per_bar: int = 20,
-                                seed: int = 42) -> pd.DataFrame:
-    """Synthesize intra-bar tick walk from OHLC bars.
+                                seed: int = 42, spread_pips: float = 1.0,
+                                pip_size: float = 0.0001) -> pd.DataFrame:
+    """Synthesize intra-bar tick walk from OHLC bars (deterministic, direction-aware).
 
-    Method (Geometric Brownian Motion between OHLC):
-      - Each bar generates `ticks_per_bar` ticks uniformly spaced in time
-      - Tick prices follow: open → high (with random walks up), then low (walk down),
-        then close (walk back)
-      - For each segment: random walk with sigma scaled to fit within range
+    MT5-realism rules:
+      - Bull bar (c>=o): path O -> L -> H -> C (SL hit before TP on uncertainty)
+      - Bear bar (c<o):  path O -> H -> L -> C
+      - Seeded RNG for reproducibility; noise clipped so H/L never violated.
+      - Bid/ask = mid +/- spread/2, spread from arg (per-symbol).
 
     Returns DataFrame indexed by datetime with columns: bid, ask, last, volume, flags
     """
     rng = np.random.default_rng(seed)
     rows = []
+    eps = 1e-9
+    spread = float(spread_pips) * float(pip_size)
     for i, bar in df.iterrows():
         o, h, l, c = float(bar["open"]), float(bar["high"]), float(bar["low"]), float(bar["close"])
-        # Determine path: open -> high -> low -> close (zig-zag walk)
-        # This gives intrabar volatility with realistic high/low excursions
+        bullish = c >= o
+        n1 = max(1, ticks_per_bar // 3)
+        n2 = max(1, ticks_per_bar // 3)
+        n3 = max(1, ticks_per_bar - n1 - n2)
+        # Direction-aware anchor path
+        if bullish:
+            anchors = [(o, l, n1), (l, h, n2), (h, c, n3)]
+        else:
+            anchors = [(o, h, n1), (h, l, n2), (l, c, n3)]
         path_prices = []
-        # Phase 1: open → high (random walk up)
-        n1 = ticks_per_bar // 4
-        for j in range(n1):
-            progress = (j + 1) / n1
-            price = o + (h - o) * progress + rng.normal(0, (h - o) * 0.1)
-            path_prices.append(price)
-        # Phase 2: high → low
-        n2 = ticks_per_bar // 4
-        for j in range(n2):
-            progress = (j + 1) / n2
-            price = h + (l - h) * progress + rng.normal(0, (h - l) * 0.1)
-            path_prices.append(price)
-        # Phase 3: low → close
-        n3 = ticks_per_bar - n1 - n2
-        for j in range(n3):
-            progress = (j + 1) / n3
-            price = l + (c - l) * progress + rng.normal(0, (c - l) * 0.1)
-            path_prices.append(price)
-        # Volume per tick (rough estimate)
+        for a, b, n in anchors:
+            scale = max(abs(b - a), eps)
+            for j in range(n):
+                progress = (j + 1) / n
+                price = a + (b - a) * progress + rng.normal(0, scale * 0.05)
+                # Clip to bar range so aggregate OHLC stays exact
+                price = min(max(price, l), h)
+                path_prices.append(price)
+        # Force exact anchors: ensure H and L are touched (MT5 every-tick guarantee)
+        if path_prices:
+            # insert exact extremes at segment boundaries
+            path_prices[n1 - 1] = l if bullish else h
+            path_prices[n1 + n2 - 1] = h if bullish else l
+            path_prices[-1] = c
         base_vol = float(bar.get("volume", 100)) / ticks_per_bar
-        # Spread (typical FX: 0.5-2 pips, but we use 1 pip = 0.0001)
-        spread = 0.0001
         for k, price in enumerate(path_prices):
             rows.append({
                 "time": i + pd.Timedelta(milliseconds=int(k * 60000 / ticks_per_bar)),

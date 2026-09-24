@@ -1,170 +1,214 @@
-"""Ticker scanner — run a strategy across multiple symbols, rank by fit.
-
-Given a strategy (path to file) and a list of symbols, fetch each symbol's
-data, run the backtest, and produce a ranked scoreboard.
-
-This answers "which ticker is the BEST fit for my strategy?" — by Sharpe,
-Calmar, net P&L, win rate, etc.
-
-Usage:
-    python -m analysis.ticker_scanner --strategy fbb --symbols EURUSD,GBPUSD,USDJPY
+"""Full Market Symbols Scanner & Quantitative Radar.
+Scans symbols across multiple timeframes (M1, M5, M15, M30, H1, H4, D1).
+Calculates Spread, Volatility ATR, ADX Regime, RSI, RVOL, Strategy Signals, and Fit Score.
+Works seamlessly with live MT5 or fallback data.
 """
 from __future__ import annotations
-import argparse
 import sys
 from pathlib import Path
-from typing import Iterable
-
+from typing import Iterable, Any
 import pandas as pd
 import numpy as np
 
 ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from data.live_fetcher import fetch_with_priority, load_settings
 from data.mt5_export import resolve_terminal
-from core.loader import load_any_strategy
-from backtester.engine_full import run_full, GRID_NONE
-from backtester.grid_recovery import GRID_LOSS_AND_PROFIT, GRID_NONE
-from backtester.metrics_v2 import compute_all
+from strategies import STRATEGY_REGISTRY
+from strategies.indicators import adx, rsi, bollinger
 
 
-# Common FX + crypto universe (can be overridden via CLI)
-DEFAULT_UNIVERSE = [
-    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
-    "EURJPY", "GBPJPY", "AUDJPY", "EURAUD", "GBPCHF",
-    "BTCUSD", "ETHUSD", "XRPUSD", "SOLUSD",
-]
+PRESET_UNIVERSES = {
+    "Metals & Commodities": ["XAUUSD", "XAUAUD", "XAGUSD", "USOIL", "UKOIL"],
+    "Forex Majors": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"],
+    "Forex Crosses": ["EURJPY", "GBPJPY", "EURGBP", "AUDJPY", "CADJPY", "NZDJPY", "EURAUD", "GBPCHF"],
+    "Global Indices": ["US30", "USTEC", "NAS100", "SPX500", "GER40", "UK100", "JP225"],
+    "Crypto": ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "DOGEUSD", "LTCUSD"],
+}
 
 
-def scan_symbols(strategy_path: str | Path,
-                   symbols: Iterable[str],
-                   timeframe: str = "H1",
-                   start: str = "2022-01-01",
-                   end: str | None = None,
-                   terminal: str | None = None,
-                   grid_mode: int = GRID_NONE,
-                   base_lot: float = 0.1,
-                   progress: bool = True) -> pd.DataFrame:
-    """Run strategy on each symbol, return ranked scoreboard.
-
-    Returns DataFrame sorted by composite score (descending).
-    """
-    settings = load_settings()
-    terminal = terminal or settings.get("mt5_terminal")
-    rows = []
-    sym_list = list(symbols)
-    for i, sym in enumerate(sym_list):
-        if progress:
-            print(f"\n[{i+1}/{len(sym_list)}] {sym} ...", flush=True)
-        try:
-            # Fetch data
-            df, info = fetch_with_priority(sym, timeframe, start, end, terminal,
-                                            allow_synthetic=True)
-            if df is None or len(df) < 200:
-                if progress:
-                    print(f"  SKIP (no data)")
+def get_available_mt5_symbols(category: str | None = None) -> list[dict]:
+    """Query live MT5 for symbol list and metadata."""
+    try:
+        import MetaTrader5 as mt5
+        if not mt5.initialize():
+            return []
+        
+        symbols = mt5.symbols_get()
+        if not symbols:
+            mt5.shutdown()
+            return []
+        
+        result = []
+        for s in symbols:
+            cat = s.path.split("\\")[0] if "\\" in s.path else "Other"
+            if category and category.lower() != "all" and category.lower() not in cat.lower() and category.lower() not in s.name.lower():
                 continue
-            # Load strategy (handle built-in names)
-            from strategies import STRATEGY_REGISTRY
-            if strategy_path in STRATEGY_REGISTRY:
-                cls = STRATEGY_REGISTRY[strategy_path]
-                params = {}
-            else:
-                cls, params, _ = load_any_strategy(strategy_path)
-                if cls is None:
-                    continue
-            strat = cls(params=params or {})
-            sig = strat.generate(df)
-            entries = sig.entries.fillna(False).astype(bool)
-            direction = pd.Series(sig.direction, index=df.index).fillna(0).astype(int)
-            signals = {"primary": (entries, direction)}
-            # Run backtest
-            result = run_full(df, signals, base_lot=base_lot,
-                                grid_mode=grid_mode)
-            m = result["metrics"]
-            # Composite score (Sharpe + Calmar + PF, weighted)
-            sharpe = m.get("sharpe", 0)
-            calmar = m.get("calmar", 0)
-            pf = min(m.get("profit_factor", 0), 5.0)
-            md = abs(m.get("max_drawdown", 0))
-            score = (sharpe * 40 + calmar * 30 + pf * 20 + (1 - min(md, 1)) * 10)
-            rows.append({
-                "symbol": sym,
-                "data_source": info.get("source", "?"),
-                "n_bars": len(df),
-                "n_trades": m.get("n_trades", 0),
-                "win_rate": m.get("win_rate", 0),
-                "sharpe": sharpe,
-                "calmar": calmar,
-                "profit_factor": pf,
-                "max_drawdown": md,
-                "net_pnl": m.get("net_pnl", 0),
-                "final_equity": m.get("final_equity", 0),
-                "composite_score": round(score, 2),
-                "annual_trades": result.get("annual_trades", 0),
+            
+            result.append({
+                "name": s.name,
+                "category": cat,
+                "path": s.path,
+                "spread": s.spread,
+                "digits": s.digits,
+                "point": s.point,
+                "description": s.description or s.name,
+                "visible": s.visible,
             })
-            if progress:
-                print(f"  trades={rows[-1]['n_trades']}, sharpe={sharpe:+.2f}, "
-                      f"score={rows[-1]['composite_score']:.1f}")
-        except Exception as e:
-            import traceback
-            if progress:
-                print(f"  ERROR: {e}")
-                traceback.print_exc()
-            continue
+        
+        mt5.shutdown()
+        return result
+    except Exception:
+        return []
 
+
+def calculate_symbol_metrics(
+    df: pd.DataFrame,
+    symbol: str,
+    timeframe: str,
+    spread_points: float | None = None,
+    point_size: float = 0.01,
+    digits: int = 2,
+    strategy_obj: Any = None,
+) -> dict:
+    """Calculate pro quantitative radar metrics on a symbol's OHLCV dataframe."""
+    if df is None or len(df) < 30:
+        return {}
+    
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    vol = df["volume"] if "volume" in df.columns else pd.Series(1000, index=df.index)
+    
+    cur_price = float(close.iloc[-1])
+    prev_close = float(close.iloc[-2])
+    chg_pct = ((cur_price - prev_close) / prev_close) * 100.0
+    
+    # 24-period change
+    lookback_24 = min(len(close) - 1, 24)
+    price_24_ago = float(close.iloc[-lookback_24])
+    chg_24h_pct = ((cur_price - price_24_ago) / price_24_ago) * 100.0
+    
+    # ATR (14)
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+    atr_14 = float(tr.rolling(14, min_periods=1).mean().iloc[-1])
+    atr_pct = (atr_14 / cur_price) * 100.0
+    
+    pip_scale = 0.0001 if digits == 5 or digits == 4 else (0.01 if digits == 3 or digits == 2 else 1.0)
+    atr_pips = atr_14 / pip_scale
+    
+    # ADX (14)
+    adx_val, pdi, ndi = adx(high, low, close, length=14)
+    adx_cur = float(adx_val.iloc[-1]) if len(adx_val) > 0 and pd.notna(adx_val.iloc[-1]) else 20.0
+    pdi_cur = float(pdi.iloc[-1]) if len(pdi) > 0 and pd.notna(pdi.iloc[-1]) else 20.0
+    ndi_cur = float(ndi.iloc[-1]) if len(ndi) > 0 and pd.notna(ndi.iloc[-1]) else 20.0
+    
+    if adx_cur >= 25:
+        regime = "Bullish Trend" if pdi_cur > ndi_cur else "Bearish Trend"
+        regime_badge = "🟢 Strong Bull" if pdi_cur > ndi_cur else "🔴 Strong Bear"
+    elif adx_cur >= 18:
+        regime = "Mild Bull" if pdi_cur > ndi_cur else "Mild Bear"
+        regime_badge = "↗️ Mild Bull" if pdi_cur > ndi_cur else "↘️ Mild Bear"
+    else:
+        regime = "Ranging / Chop"
+        regime_badge = "⚪ Consolidation"
+        
+    # RSI (14)
+    rsi_s = rsi(close, length=14)
+    rsi_cur = float(rsi_s.iloc[-1]) if len(rsi_s) > 0 and pd.notna(rsi_s.iloc[-1]) else 50.0
+    
+    # RVOL (Relative Volume)
+    vol_mean = vol.rolling(20, min_periods=1).mean()
+    rvol = float(vol.iloc[-1] / max(vol_mean.iloc[-1], 1.0))
+    
+    # Spread in pips
+    spread_pips = (spread_points * point_size / pip_scale) if spread_points is not None else (atr_pips * 0.05)
+    spread_cost_ratio = (spread_pips / max(atr_pips, 0.001)) * 100.0  # Spread as % of bar range
+    
+    # Strategy Signal Check (if strategy supplied)
+    signal_label = "NEUTRAL"
+    if strategy_obj is not None:
+        try:
+            sig = strategy_obj.generate(df)
+            entries = sig.entries.fillna(False).values
+            direction = sig.direction if hasattr(sig, "direction") else np.zeros(len(df))
+            if entries[-1]:
+                signal_label = "BUY 🟢" if direction[-1] > 0 else "SELL 🔴"
+            elif len(entries) > 2 and entries[-2]:
+                signal_label = "RECENT BUY" if direction[-2] > 0 else "RECENT SELL"
+        except Exception:
+            pass
+            
+    # Breakout / Strategy Suitability Score (0-100)
+    # Rewards: high volatility ATR, clear ADX trend, low spread cost ratio, RVOL surge
+    vol_score = min(atr_pct / 0.5, 1.0) * 35.0
+    trend_score = min(adx_cur / 40.0, 1.0) * 35.0
+    spread_penalty = min(spread_cost_ratio / 15.0, 1.0) * 20.0
+    rvol_bonus = min(rvol / 2.0, 1.0) * 10.0
+    
+    suitability = max(0.0, min(100.0, vol_score + trend_score + rvol_bonus - spread_penalty))
+    
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "price": cur_price,
+        "change_pct": round(chg_pct, 2),
+        "change_24h_pct": round(chg_24h_pct, 2),
+        "spread_pips": round(spread_pips, 1),
+        "spread_cost_ratio": round(spread_cost_ratio, 1),
+        "atr_pips": round(atr_pips, 1),
+        "atr_pct": round(atr_pct, 2),
+        "adx": round(adx_cur, 1),
+        "regime": regime_badge,
+        "rsi": round(rsi_cur, 1),
+        "rvol": round(rvol, 2),
+        "suitability": round(suitability, 1),
+        "signal": signal_label,
+        "bars": len(df),
+    }
+
+
+def scan_market_matrix(
+    symbols: list[str],
+    timeframes: list[str] = ["M1", "M5", "M15", "H1", "H4", "D1"],
+    strategy_name: str | None = None,
+    strategy_params: dict | None = None,
+    terminal: str | None = None,
+    progress_callback: Any = None,
+) -> pd.DataFrame:
+    """Scan a universe of symbols across multiple timeframes."""
+    rows = []
+    total = len(symbols) * len(timeframes)
+    count = 0
+    
+    strat_obj = None
+    if strategy_name and strategy_name in STRATEGY_REGISTRY:
+        strat_obj = STRATEGY_REGISTRY[strategy_name](params=strategy_params or {})
+        
+    for sym in symbols:
+        sym_clean = sym.strip().upper()
+        for tf in timeframes:
+            count += 1
+            if progress_callback:
+                progress_callback(count, total, f"Scanning {sym_clean} [{tf}]...")
+                
+            try:
+                df, info = fetch_with_priority(sym_clean, tf, allow_synthetic=True, terminal_override=terminal)
+                if df is not None and len(df) >= 30:
+                    metrics = calculate_symbol_metrics(df, sym_clean, tf, strategy_obj=strat_obj)
+                    if metrics:
+                        rows.append(metrics)
+            except Exception:
+                continue
+                
     if not rows:
         return pd.DataFrame()
-    df_ranked = pd.DataFrame(rows).sort_values("composite_score", ascending=False)
-    df_ranked["rank"] = range(1, len(df_ranked) + 1)
-    return df_ranked
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--strategy", required=True, help="Path to strategy file or strategy name")
-    ap.add_argument("--symbols", default=",".join(DEFAULT_UNIVERSE),
-                    help="Comma-separated symbols")
-    ap.add_argument("--timeframe", default="H1")
-    ap.add_argument("--start", default="2022-01-01")
-    ap.add_argument("--end", default=None)
-    ap.add_argument("--mt5-terminal", default=None)
-    ap.add_argument("--out", default="output/scan_results.csv")
-    ap.add_argument("--grid", action="store_true", help="Enable grid mode")
-    ap.add_argument("--top", type=int, default=10, help="Show top N")
-    args = ap.parse_args()
-
-    # Resolve strategy path
-    strat_path = args.strategy
-    if strat_path in ("fbb", "ac_ao", "adx", "dem", "mfi", "ms", "mtf_stoch"):
-        # Built-in strategy — use it directly
-        from strategies import STRATEGY_REGISTRY
-        cls = STRATEGY_REGISTRY[strat_path]
-        # Save to a temp file so loader can read it
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(f"from strategies import {cls.__name__}\n"
-                    f"class {cls.__name__}Strategy({cls.__name__}):\n  pass\n")
-            strat_path = f.name
-    elif not Path(strat_path).exists():
-        print(f"Strategy file not found: {strat_path}")
-        sys.exit(1)
-
-    symbols = [s.strip() for s in args.symbols.split(",")]
-    grid_mode = GRID_LOSS_AND_PROFIT if args.grid else GRID_NONE
-    df = scan_symbols(strat_path, symbols, args.timeframe, args.start,
-                       args.end, args.mt5_terminal, grid_mode)
-    if df.empty:
-        print("No results")
-        return
-
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(args.out, index=False)
-    print(f"\n\n=== TOP {args.top} SYMBOLS (by composite score) ===")
-    print(df.head(args.top).to_string(index=False))
-    print(f"\nFull results saved to {args.out}")
-
-
-if __name__ == "__main__":
-    main()
+        
+    df_result = pd.DataFrame(rows).sort_values(["suitability", "atr_pct"], ascending=[False, False])
+    return df_result

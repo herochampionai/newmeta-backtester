@@ -1,0 +1,20 @@
+{
+  "EURUSD": {
+    "symbol": "EURUSD",
+    "digits": 5,
+    "point": 1e-05,
+    "pip_size": 0.0001,
+    "tick_value": 1.0,
+    "tick_size": 1e-05,
+    "contract_size": 100000.0,
+    "volume_min": 0.01,
+    "volume_max": 100.0,
+    "volume_step": 0.01,
+    "spread_pips": 0.10000000000065512,
+    "swap_long_pips": -0.51,
+    "swap_short_pips": 0.25,
+    "triple_day": 3,
+    "margin_per_lot": 0.0,
+    "source": "mt5"
+  }
+}

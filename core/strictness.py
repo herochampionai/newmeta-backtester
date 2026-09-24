@@ -165,6 +165,18 @@ RISK_PROFILES = {
 }
 
 
+# Surgical feature toggles — all default OFF per roadmap acceptance bar.
+# Injected into params so strategies / grid engine / anomaly gate can read them.
+def _default_surgical_features() -> dict:
+    """Return the default-OFF surgical features dict for risk profiles."""
+    from .surgical_features import get_feature_defaults
+    return get_feature_defaults()
+
+
+for _profile_name in RISK_PROFILES:
+    RISK_PROFILES[_profile_name]["surgical_features"] = _default_surgical_features()
+
+
 def apply_risk_profile(profile_name: str, base_params: dict | None = None) -> dict:
     """Apply a risk profile preset. Returns updated params dict + side info."""
     profile = RISK_PROFILES[profile_name]

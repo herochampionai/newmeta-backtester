@@ -31,23 +31,15 @@ def load_settings() -> dict:
 
 def try_live_mt5(symbol: str, timeframe: str, start: str, end: str | None,
                  terminal_override: str | None = None) -> tuple[pd.DataFrame | None, dict]:
-    """Attempt live MT5 fetch. Returns (df, info) or (None, error_info)."""
     try:
         from data.mt5_export import resolve_terminal, init_mt5, fetch_bars
         terminal = resolve_terminal(terminal_override)
         if not terminal:
-            return None, {"error": "no_terminal_found",
-                          "candidates": ["D:\\MT5_EuroPrinter\\terminal64.exe",
-                                         "D:\\MT5_Bybit\\terminal64.exe"]}
+            return None, {"error": "no_terminal_found"}
         ok = init_mt5(terminal)
         if not ok:
             return None, {"error": "init_failed", "terminal": terminal}
         df = fetch_bars(symbol, timeframe, start, end)
-        try:
-            import MetaTrader5 as mt5
-            mt5.shutdown()
-        except Exception:
-            pass
         return df, {"source": "mt5_live", "terminal": terminal,
                     "rows": len(df), "first": str(df.index[0]), "last": str(df.index[-1])}
     except Exception as e:
@@ -55,7 +47,6 @@ def try_live_mt5(symbol: str, timeframe: str, start: str, end: str | None,
 
 
 def try_yahoo(symbol: str, timeframe: str, start: str, end: str | None) -> tuple[pd.DataFrame | None, dict]:
-    """Yahoo Finance fallback. Lower quality for FX."""
     try:
         from data.yahoo_fallback import fetch
         df = fetch(symbol, timeframe, start, end)
@@ -66,7 +57,6 @@ def try_yahoo(symbol: str, timeframe: str, start: str, end: str | None) -> tuple
 
 
 def try_cache(symbol: str, timeframe: str) -> tuple[pd.DataFrame | None, dict]:
-    """Look for cached Parquet."""
     try:
         from data.cache import load
         df, meta = load(symbol, timeframe)
@@ -77,12 +67,11 @@ def try_cache(symbol: str, timeframe: str) -> tuple[pd.DataFrame | None, dict]:
         return None, {"error": "no_cache", "detail": str(e)}
 
 
-def synthetic(n_bars: int = 8000, seed: int = 42, drift: float = 0.0001,
+def synthetic(n_bars: int = 5000, seed: int = 42, drift: float = 0.0001,
               vol: float = 0.0003) -> tuple[pd.DataFrame, dict]:
-    """Last-resort synthetic data with mild uptrend."""
     rng = np.random.default_rng(seed)
-    idx = pd.date_range("2023-01-01", periods=n_bars, freq="h", tz="UTC")
-    price = 1.10 * np.exp(np.cumsum(rng.normal(drift, vol, n_bars)))
+    idx = pd.date_range("2024-01-01", periods=n_bars, freq="h", tz="UTC")
+    price = 2000.0 * np.exp(np.cumsum(rng.normal(drift, vol, n_bars)))
     high = price * (1 + np.abs(rng.normal(0, 0.0005, n_bars)))
     low = price * (1 - np.abs(rng.normal(0, 0.0005, n_bars)))
     opn = np.roll(price, 1); opn[0] = price[0]
@@ -97,28 +86,26 @@ def fetch_with_priority(symbol: str, timeframe: str = "H1",
                        start: str = "2022-01-01", end: str | None = None,
                        terminal_override: str | None = None,
                        allow_synthetic: bool = True) -> tuple[pd.DataFrame, dict]:
-    """Live-first data fetch chain. Returns (df, chain_info).
-    chain_info contains 'source' and any error from each prior attempt."""
     chain = []
 
     # 1. Live MT5
     df, info = try_live_mt5(symbol, timeframe, start, end, terminal_override)
     chain.append(info)
-    if df is not None:
+    if df is not None and len(df) > 0:
         info["chain"] = chain
         return df, info
 
     # 2. Yahoo
     df, info2 = try_yahoo(symbol, timeframe, start, end)
     chain.append(info2)
-    if df is not None:
+    if df is not None and len(df) > 0:
         info2["chain"] = chain
         return df, info2
 
     # 3. Cache
     df, info3 = try_cache(symbol, timeframe)
     chain.append(info3)
-    if df is not None:
+    if df is not None and len(df) > 0:
         info3["chain"] = chain
         return df, info3
 

@@ -20,8 +20,21 @@ INTERVAL_MAP = {
 
 def fetch(symbol: str, timeframe: str, start: str, end: str | None = None) -> pd.DataFrame:
     import yfinance as yf
-    ticker = YAHOO_MAP.get(symbol.upper(), f"{symbol}=X")
+    # Try direct ticker mapping first, then =X suffix for FX
+    ticker = YAHOO_MAP.get(symbol.upper(), symbol.upper())
+    # For crypto tickers like BTC-USD, yfinance handles them directly
+    if "-" in ticker or ticker.endswith("-USD"):
+        pass  # crypto format
+    elif not ticker.endswith("=X"):
+        ticker = f"{ticker}=X"
+
     interval = INTERVAL_MAP.get(timeframe.upper(), "60m")
+    # yfinance supports "60m" but not "H1" or "1H"
+    if timeframe.upper().replace("1", "") == "H":
+        interval = "60m"
+    elif timeframe.upper() in ("M15", "15M"):
+        interval = "15m"
+
     df = yf.download(ticker, start=start, end=end, interval=interval, progress=False)
     if df.empty:
         raise RuntimeError(f"yahoo returned empty for {ticker}")

@@ -1,11 +1,11 @@
-"""Full smoke test: synthetic trending data, all 6 strategies, EA-equivalent defaults."""
+"""Full smoke test: synthetic trending data, 12 tradable strategies."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import numpy as np
 import pandas as pd
-from strategies import STRATEGY_REGISTRY
+from strategies import TRADABLE_STRATEGY_REGISTRY
 from backtester.engine import run_direction
 
 np.random.seed(42)
@@ -73,7 +73,7 @@ DEFAULTS_PER_STRAT = {
 }
 
 print(f"=== Synthetic trending H1 ({n} bars) ===")
-for name, cls in STRATEGY_REGISTRY.items():
+for name, cls in TRADABLE_STRATEGY_REGISTRY.items():
     try:
         params = {**DEFAULT, **DEFAULTS_PER_STRAT.get(name, {})}
         s = cls(params=params)
@@ -86,3 +86,4 @@ for name, cls in STRATEGY_REGISTRY.items():
         import traceback
         print(f"  {name:8s} FAILED: {type(e).__name__}: {e}")
         traceback.print_exc()
+

@@ -40,7 +40,7 @@ Then pick a mode:
 | 🔬 **Optimize** | Optuna Bayesian search with composite criterion (Sharpe+Calmar+PF+DD) |
 | 🎲 **Monte Carlo** | 2000 bootstrap simulations with 95% CI |
 | 📊 **Walk-Forward** | Rolling IS/OOS to detect overfit |
-| 🧬 **Multi-Strategy** | All 6 strategies + Markowitz/Kelly allocation |
+| 🧬 **Multi-Strategy** | 12 standalone algo strategies + Markowitz/Kelly allocation |
 | ✅ **Validate** | Test against 7 synthetic scenarios — catches bugs |
 | 🪄 **Auto-Magic** | Drop file → 6-step workflow + verdict |
 | 🎓 **Guided** | Step-by-step wizard for non-pro traders |

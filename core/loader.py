@@ -22,11 +22,9 @@ def load_any_strategy(path: str | Path, params_override: dict | None = None) -> 
         elif suffix == ".py":
             return _load_py(p, params_override, info)
         elif suffix in (".pine", ".txt", ".md"):
-            # Try PineScript first
             if suffix == ".pine":
                 return _load_pine(p, params_override, info)
             else:
-                # .txt — try keyword detection
                 return _load_text(p, params_override, info)
     except Exception as e:
         return None, None, {"error": str(e), "type": type(e).__name__, "file": str(p),
@@ -35,19 +33,70 @@ def load_any_strategy(path: str | Path, params_override: dict | None = None) -> 
 
 
 def _load_mq5(p: Path, params_override: dict | None, info: dict) -> tuple:
-    """Parse MQL5 — extract inputs + indicators, build strategy via Pine-like wrapper."""
-    from frontend.file_detect import detect_from_extension
-    det = detect_from_extension(p)
-    info.update(det)
+    """Parse MQL5 using MQL5Parser, extract inputs, profiles, and map to appropriate strategy."""
+    from core.mql5_parser import MQL5Parser
+    parser = MQL5Parser(p)
+    spec = parser.parse()
+    
     info["type"] = "mq5"
-    suggested = det.get("suggested_strategy", "fbb")
-    if suggested not in STRATEGY_REGISTRY:
+    info["ea_name"] = spec.get("ea_name", p.stem)
+    info["version"] = spec.get("version", "1.0")
+    info["profiles"] = spec.get("profiles", {})
+    info["profile_presets"] = spec.get("profile_presets", {})
+    info["inputs_metadata"] = spec.get("inputs", {})
+    info["input_count"] = len(spec.get("inputs", {}))
+    
+    # Extract defaults dict
+    extracted_inputs = {}
+    for k, v in spec.get("inputs", {}).items():
+        val = v.get("default", "")
+        # Parse scalar types
+        if isinstance(val, str):
+            val_clean = val.strip().strip('"').strip("'")
+            if val_clean.lower() == "true":
+                extracted_inputs[k] = True
+            elif val_clean.lower() == "false":
+                extracted_inputs[k] = False
+            else:
+                try:
+                    if "." in val_clean:
+                        extracted_inputs[k] = float(val_clean)
+                    else:
+                        extracted_inputs[k] = int(val_clean)
+                except ValueError:
+                    extracted_inputs[k] = val_clean
+        else:
+            extracted_inputs[k] = val
+            
+    info["inputs"] = extracted_inputs
+    
+    # Determine best strategy mapping
+    text = parser.text
+    if "LondonSessionStartHour_UTC" in text or "Hunter_TakeProfitPercent" in text or "light" in p.stem.lower() or "EnergyGauge" in text:
+        suggested = "light9"
+    elif "iAC" in text or "iAO" in text:
+        suggested = "ac_ao"
+    elif "iADX" in text:
+        suggested = "adx"
+    elif "iDeMarker" in text:
+        suggested = "dem"
+    elif "iBands" in text or "iForce" in text:
         suggested = "fbb"
-    cls = STRATEGY_REGISTRY[suggested]
-    # Use detected inputs as parameter overrides
-    merged = _merge_with_defaults(suggested, det.get("inputs", {}))
+    elif "iMFI" in text:
+        suggested = "mfi"
+    elif "iMACD" in text or "iStochastic" in text:
+        suggested = "ms"
+    else:
+        suggested = "fbb"
+        
+    info["suggested_strategy"] = suggested
+    cls = STRATEGY_REGISTRY.get(suggested, STRATEGY_REGISTRY["fbb"])
+    
+    # Merge parameters
+    merged = _merge_with_defaults(suggested, extracted_inputs)
     if params_override:
         merged.update(params_override)
+        
     return cls, merged, info
 
 
@@ -61,7 +110,6 @@ def _load_py(p: Path, params_override: dict | None, info: dict) -> tuple:
         spec.loader.exec_module(mod)
     except Exception as e:
         return None, None, {"error": f"import failed: {e}", "file": str(p)}
-    # Find BaseStrategy subclass
     from strategies._base import BaseStrategy
     cls = None
     for name in dir(mod):
@@ -89,13 +137,10 @@ def _load_pine(p: Path, params_override: dict | None, info: dict) -> tuple:
     info["parsed_indicators"] = [i["type"] for i in spec["required_indicators"]]
     info["n_entry_conditions"] = len(spec["entry_conditions"])
     info["n_close_conditions"] = len(spec["close_conditions"])
-    # Build UniversalStrategy
     cls = STRATEGY_REGISTRY["universal"]
     merged_params = dict(spec["inputs"])
     if params_override:
         merged_params.update(params_override)
-    instance = cls(name=spec["name"], spec=spec, params=merged_params)
-    # Wrap so it can be instantiated again with same spec
     class _WrappedUniversal:
         def __new__(cls2, params=None):
             return cls(name=spec["name"], spec=spec, params={**(merged_params), **(params or {})})
@@ -106,7 +151,6 @@ def _load_text(p: Path, params_override: dict | None, info: dict) -> tuple:
     """Treat .txt/.md as PineScript or keyword config."""
     text = p.read_text(encoding="utf-8", errors="replace")
     if "strategy.entry" in text or "ta.rsi" in text or "ta.ema" in text:
-        # Likely PineScript saved as .txt
         from core.pine_parser import parse_pine_text, parse_pine_to_strategy
         parsed = parse_pine_text(text)
         spec = parse_pine_to_strategy(parsed)
@@ -120,7 +164,6 @@ def _load_text(p: Path, params_override: dict | None, info: dict) -> tuple:
                 def __new__(cls2, params=None):
                     return cls(name=spec["name"], spec=spec, params={**merged, **(params or {})})
             return _Wrapped, merged, info
-    # Keyword-based detection
     from frontend.file_detect import detect_from_text
     det = detect_from_text(p)
     info.update(det)
@@ -136,7 +179,6 @@ def _load_text(p: Path, params_override: dict | None, info: dict) -> tuple:
 
 
 def _merge_with_defaults(strategy_name: str, detected_inputs: dict) -> dict:
-    """Merge detected inputs with strategy defaults, keeping detected values where names match."""
     defaults_map = {
         "ac_ao": dict(open_orders_type=1, close_orders_type=0, level_open_orders=80,
                       level_close_orders=70, use_acceleration_filter=False,
@@ -145,7 +187,10 @@ def _merge_with_defaults(strategy_name: str, detected_inputs: dict) -> dict:
         "adx": dict(open_orders_type=1, close_orders_type=4, level_open_orders_1=55,
                     level_open_orders_2=15, level_close_orders_1=15,
                     level_close_orders_2=5, use_di_crossover=True,
-                    crossover_lookback=3, min_crossover_gap=5, bars_calculate=20),
+                    crossover_lookback=3, min_crossover_gap=5, bars_calculate=20,
+                    use_zone_logic=True, adx_zone_low=18, adx_zone_high=35,
+                    adx_continuation_level=24, adx_reversal_edge=20,
+                    sweep_lookback=5),
         "dem": dict(open_orders_type=3, close_orders_type=0, level_open_orders=75,
                     level_close_orders=70, bars_calculate=20),
         "fbb": dict(open_orders_type_1=1, open_orders_type_2=0, close_orders_type_1=0,
@@ -161,19 +206,17 @@ def _merge_with_defaults(strategy_name: str, detected_inputs: dict) -> dict:
                    close_orders_type_2=0, level_open_orders_1=20,
                    level_open_orders_2=80, level_close_orders_1=50,
                    level_close_orders_2=65, use_confluence_filter=False,
+                   fallback_on_empty=True, combine_mode="auto",
                    use_macd_divergence=False, use_stoch_divergence=False,
                    use_histogram_divergence=False, fast_ema_period=3,
                    slow_ema_period=9, signal_period=2, k_period=5, d_period=3,
                    slowing_period=12),
+        "light9": dict(profile="hybrid", LondonSessionStartHour_UTC=7, NYSessionStartHour_UTC=13,
+                       SessionAdx_Threshold1=30.0, SessionAdx_Period1=14,
+                       Hunter_TakeProfitPercent=1.26, Hunter_StopLossPercent=1.80,
+                       TrailingDistancePips=951, BreakevenActivationPips=169, BreakevenBufferPips=159),
     }
     defaults = defaults_map.get(strategy_name, {})
     merged = dict(defaults)
-    # Normalize detected keys: drop suffixes like "_0", "_1"
-    for k, v in detected_inputs.items():
-        clean = re.sub(r'_\d+$', '', k)
-        # Find a default key that matches
-        for dk in defaults:
-            if clean.lower() == dk.lower() or clean.lower() in dk.lower():
-                merged[dk] = v
-                break
+    merged.update(detected_inputs)
     return merged

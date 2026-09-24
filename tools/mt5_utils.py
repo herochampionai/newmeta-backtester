@@ -21,14 +21,41 @@ def find_metatrader() -> Optional[Path]:
 
 
 def list_mql5_files(source_root: str | Path, extensions: tuple = (".mq5", ".mqh")) -> List[Path]:
-    """List all MQL5 source files recursively under source_root/MQL5."""
+    """List MQL5 source files for EA work.
+
+    The selector should prioritize the real terminal MQL5/Experts folder and
+    avoid crawling large archive folders under MQL5 unless explicitly selected.
+    """
     root = Path(source_root)
     if not root.exists():
         return []
     mql5_dir = root / "MQL5"
     if not mql5_dir.exists():
-        mql5_dir = root  # fallback to root
-    return sorted([p for p in mql5_dir.rglob("*") if p.suffix in extensions])
+        mql5_dir = root
+
+    files: list[Path] = []
+    seen = set()
+
+    experts_dir = mql5_dir / "Experts"
+    if experts_dir.exists():
+        for p in experts_dir.rglob("*"):
+            if p.suffix.lower() in extensions:
+                key = str(p.resolve()).lower()
+                if key not in seen:
+                    seen.add(key)
+                    files.append(p)
+
+    for p in mql5_dir.iterdir():
+        if p.is_file() and p.suffix.lower() in extensions:
+            key = str(p.resolve()).lower()
+            if key not in seen:
+                seen.add(key)
+                files.append(p)
+
+    if files:
+        return sorted(files, key=lambda p: (0 if experts_dir in p.parents else 1, str(p).lower()))
+
+    return sorted([p for p in mql5_dir.rglob("*") if p.suffix.lower() in extensions])
 
 
 def compile_mq5(mq5_path: str | Path, metatrader: str | Path | None = None,
@@ -82,3 +109,5 @@ def compile_mq5(mq5_path: str | Path, metatrader: str | Path | None = None,
         return {"success": False, "errors": f"Compile timeout after {timeout}s"}
     except Exception as e:
         return {"success": False, "errors": str(e)}
+
+

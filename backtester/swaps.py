@@ -51,18 +51,17 @@ def swap_multiplier(date: pd.Timestamp) -> float:
 
 
 def compute_swap_series(df: pd.DataFrame, long_swap_pips: float, short_swap_pips: float,
-                         position_sizes: pd.Series | None = None,
-                         pip_size: float = 0.0001, contract_size: float = 100_000
-                         ) -> pd.Series:
-    """Compute swap cost/credit per bar.
+                          position_sizes: pd.Series | None = None,
+                          direction_series: pd.Series | None = None,
+                          triple_day: int = 2,
+                          pip_size: float = 0.0001, contract_size: float = 100_000
+                          ) -> pd.Series:
+    """Compute swap cost/credit per bar — DIRECTION-AWARE (no averaging).
 
-    Args:
-        df: OHLCV df with DatetimeIndex
-        long_swap_pips: positive = earn, negative = pay (per standard lot per day)
-        short_swap_pips: same for short positions
-        position_sizes: lots held per bar (defaults to 1.0 if None)
-    Returns:
-        pd.Series of swap $ per bar.
+    Long bars use long_swap_pips, short bars use short_swap_pips.
+    triple_day (0=Mon..6=Sun) replaces hardcoded Wednesday.
+    direction_series: +1 long / -1 short / 0 flat per bar. If None, falls back
+    to legacy signed position_sizes sign, else long-side (compat).
     """
     n = len(df)
     if position_sizes is None:
@@ -70,14 +69,18 @@ def compute_swap_series(df: pd.DataFrame, long_swap_pips: float, short_swap_pips
     # Determine swap at each bar from date index
     swaps = pd.Series(0.0, index=df.index)
     for i, ts in enumerate(df.index):
-        mult = swap_multiplier(ts)
-        if mult == 0.0:
+        if ts.weekday() >= 5 or is_holiday(ts):
             continue
-        pos = position_sizes.iloc[i]
-        # Long pays long_swap, short pays short_swap (positive = receive)
-        # Average: use abs(pos) * average swap as estimate
-        avg_swap_pips = (long_swap_pips + short_swap_pips) / 2
-        swap_dollar = avg_swap_pips * mult * pip_size * contract_size * abs(pos)
+        mult = 3.0 if ts.weekday() == int(triple_day) else 1.0
+        pos = float(position_sizes.iloc[i])
+        if pos == 0:
+            continue
+        if direction_series is not None:
+            d = float(direction_series.iloc[i])
+        else:
+            d = 1.0 if pos > 0 else (-1.0 if pos < 0 else 1.0)
+        use_pips = long_swap_pips if d > 0 else (short_swap_pips if d < 0 else 0.0)
+        swap_dollar = use_pips * mult * pip_size * contract_size * abs(pos)
         swaps.iloc[i] = swap_dollar
     return swaps
 

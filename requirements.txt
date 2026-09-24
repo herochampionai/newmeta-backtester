@@ -11,3 +11,4 @@ ta==0.11.0
 yfinance>=0.2.40
 pyyaml>=6.0
 pyarrow>=14
+hmmlearn>=0.3  # optional: HMM regimes in factor_attribution (vol fallback otherwise)

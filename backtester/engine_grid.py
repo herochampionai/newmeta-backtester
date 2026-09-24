@@ -13,6 +13,7 @@ from backtester.grid_recovery import (
 from backtester.adaptive import AdaptiveSizer, AdaptiveConfig
 from backtester.swaps import compute_swap_series
 from backtester.analytics import streak_stats, annual_trade_count, strategy_scoreboard
+from core.surgical_features import is_enabled, get_feature_params
 
 
 def run_grid(df: pd.DataFrame,
@@ -20,6 +21,8 @@ def run_grid(df: pd.DataFrame,
               init_cash: float = 10_000.0,
               commission_pips: float = 0.7,
               slippage_pips: float = 0.3,
+              spread_pips: float = 0.0,
+              commission_pct: float = 0.0,
               pip_size: float = 0.0001,
               contract_size: float = 100_000,
               grid_mode: int = GRID_LOSS_AND_PROFIT,
@@ -31,11 +34,18 @@ def run_grid(df: pd.DataFrame,
               recovery_mode: int = RECOVERY_NONE,
               recovery_lot_multiplier: float = 2.0,
               base_lot: float = 0.1,
+              params: dict | None = None,
               ) -> dict:
     """Run grid + recovery backtest. Builds the GridRecoveryManager internally.
 
     Returns dict with: equity, trades, metrics, per_strategy, grid_summary, etc.
     """
+    # Resolve surgical feature params from strategy params dict
+    rr_p = get_feature_params(params, "recovery_restart")
+    bmt_p = get_feature_params(params, "basket_money_tp")
+    plt_p = get_feature_params(params, "profit_lock_trail")
+    car_p = get_feature_params(params, "carry_adjusted_tp")
+
     mgr = GridRecoveryManager(
         grid_mode=grid_mode,
         pips_between_orders=pips_between_orders,
@@ -48,11 +58,23 @@ def run_grid(df: pd.DataFrame,
         base_lot=base_lot,
         pip_size=pip_size,
         contract_size=contract_size,
+        recovery_restart_enabled=is_enabled(params, "recovery_restart"),
+        recovery_restart_size_mult=rr_p.get("size_multiplier", 0.5),
+        recovery_restart_strictness_bonus=rr_p.get("strictness_bonus", 1),
+        recovery_restart_cooldown_bars=rr_p.get("cooldown_bars", 12),
+        basket_money_tp_enabled=is_enabled(params, "basket_money_tp"),
+        basket_take_profit_usd=bmt_p.get("basket_take_profit_usd", 50.0),
+        profit_lock_trail_enabled=is_enabled(params, "profit_lock_trail"),
+        profit_lock_pct=plt_p.get("profit_lock_pct", 60.0),
+        carry_adjusted_tp_enabled=is_enabled(params, "carry_adjusted_tp"),
+        rollover_window_hours=car_p.get("rollover_window_hours", 8),
+        tp_extension_pct=car_p.get("tp_extension_pct", 25.0),
     )
     result = run_with_grid_recovery(
         df, signals_by_strategy, mgr,
         init_cash=init_cash,
         commission_pips=commission_pips, slippage_pips=slippage_pips,
+        spread_pips=spread_pips, commission_pct=commission_pct,
     )
     # Enrich with grid_summary + streak + scoreboard + n_bars
     result["grid_summary"] = mgr.summary()
@@ -74,6 +96,8 @@ def run_with_grid_recovery(df: pd.DataFrame, signals_by_strategy: dict[str, tupl
                             init_cash: float = 10_000.0,
                             commission_pips: float = 0.7,
                             slippage_pips: float = 0.3,
+                            spread_pips: float = 0.0,
+                            commission_pct: float = 0.0,
                             periods_per_year: int = 252 * 24,
                             ) -> dict:
     """Run backtest with grid + recovery simulation.
@@ -106,18 +130,23 @@ def run_with_grid_recovery(df: pd.DataFrame, signals_by_strategy: dict[str, tupl
                 bar_high=float(bar["high"]), bar_low=float(bar["low"]),
                 bar_close=float(bar["close"]), bar_index=bar_idx,
                 commission_pips=commission_pips, slippage_pips=slippage_pips,
+                spread_pips=spread_pips, commission_pct=commission_pct,
+                bar_timestamp=df.index[bar_idx] if hasattr(df.index, '__getitem__') else None,
             )
     # Build aggregate trade log
     trades_df = mgr.to_trades_df()
-    # Build equity curve from manager's equity_curve list
+    # Build equity from closed-trade PnL events. Each trade PnL is applied once
+    # at its close bar, then accumulated forward through time.
     if mgr.equity_curve:
         eq_df = pd.DataFrame(mgr.equity_curve, columns=["bar_index", "pnl", "strategy"])
-        equity = pd.Series(0.0, index=df.index, name="equity")
+        pnl_events = pd.Series(0.0, index=df.index, name="pnl")
         for _, row in eq_df.iterrows():
-            equity.iloc[int(row["bar_index"]):] += float(row["pnl"])
-        equity = init_cash + equity.cumsum()
+            bar_index = int(row["bar_index"])
+            if 0 <= bar_index < len(pnl_events):
+                pnl_events.iloc[bar_index] += float(row["pnl"])
+        equity = (init_cash + pnl_events.cumsum()).rename("equity")
     else:
-        equity = pd.Series(init_cash, index=df.index)
+        equity = pd.Series(init_cash, index=df.index, name="equity")
     # Compute metrics
     returns = equity.pct_change().fillna(0)
     metrics = compute_all(returns, trades_df, equity, periods_per_year=periods_per_year)
@@ -139,3 +168,4 @@ def run_with_grid_recovery(df: pd.DataFrame, signals_by_strategy: dict[str, tupl
         "equity": equity,
         "per_strategy": per_strat,
     }
+

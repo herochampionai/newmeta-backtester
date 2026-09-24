@@ -139,7 +139,14 @@ def compute_all(returns: pd.Series, trades: pd.DataFrame | None = None,
             # Profit factor
             gross_profit = float(wins.sum()) if len(wins) else 0.0
             gross_loss = float(-losses.sum()) if len(losses) else 0.0
-            pf = gross_profit / gross_loss if gross_loss > 0 else np.inf
+            # PF is undefined when gross_loss == 0. Use None (caller decides display)
+            # and a numeric proxy "n_losses" so the absence of losses is unambiguous.
+            if gross_loss > 0:
+                pf = gross_profit / gross_loss
+            elif gross_profit > 0:
+                pf = float("inf")  # all winners, no losers — mathematically undefined
+            else:
+                pf = 0.0  # no winners, no losers (no trades at all)
             # Expectancy = (win_rate * avg_win) - ((1-win_rate) * abs(avg_loss))
             expectancy = win_rate * avg_win + (1 - win_rate) * avg_loss
             # Largest win/loss
@@ -160,7 +167,10 @@ def compute_all(returns: pd.Series, trades: pd.DataFrame | None = None,
                 "avg_loss": avg_loss,
                 "largest_win": largest_win,
                 "largest_loss": largest_loss,
-                "profit_factor": float(pf) if pf != np.inf else 999.0,
+                # When PF is undefined (no losses), use a clearly-finite numeric cap of 99
+                # so it sorts/ranks correctly. UI should render this as "—" or "∞".
+                "profit_factor": (99.0 if pf == float("inf") else float(pf)),
+                "profit_factor_undefined": pf == float("inf"),  # flag for UI
                 "expectancy": expectancy,
                 "gross_profit": gross_profit,
                 "gross_loss": gross_loss,
@@ -181,3 +191,103 @@ def to_card_metrics(m: dict) -> dict:
         else:
             out[k] = v
     return out
+
+
+def tester_statistics(metrics: dict, trades: pd.DataFrame | None = None,
+                      equity: pd.Series | None = None,
+                      init_cash: float = 10000.0) -> dict:
+    """MQL5 TesterStatistics() mirror — same names MT5 shows in Results tab.
+
+    Keys follow STAT_* naming so OnTester-style custom criteria port 1:1:
+    STAT_PROFIT, STAT_TRADES, STAT_PROFIT_FACTOR, STAT_RECOVERY_FACTOR,
+    STAT_SHARPE_RATIO, STAT_EXPECTED_PAYOFF, STAT_EQUITY_DD / _PERCENT /
+    _RELATIVE, STAT_BALANCE_DD*, STAT_WIN_*, STAT_CONPROFITMAX/MIN etc.
+    Missing broker-only fields (margin level) return None explicitly.
+    """
+    m = dict(metrics or {})
+    net = float(m.get("net_pnl", 0) or 0)
+    gross_p = float(m.get("gross_profit", 0) or 0)
+    gross_l = float(m.get("gross_loss", 0) or 0)
+    pf = float(m.get("profit_factor", 0) or 0)
+    rec = float(m.get("recovery_factor", 0) or 0)
+    sharpe = float(m.get("sharpe", 0) or 0)
+    n = int(m.get("n_trades", 0) or 0)
+    n_wins = int(m.get("n_wins", 0) or 0)
+    exp_payoff = float(m.get("expectancy", (net / n) if n else 0) or 0)
+    max_dd = float(m.get("max_drawdown", 0) or 0)  # negative fraction
+
+    # Drawdowns in money + percent from equity curve (balance == equity here:
+    # single-asset, no open-position carry — matches MT5 when no overnight holds)
+    eq_dd_money = 0.0
+    eq_dd_pct = 0.0
+    if equity is not None and len(equity) > 1:
+        try:
+            peak = equity.cummax()
+            dd_money = (equity - peak).min()
+            eq_dd_money = abs(float(dd_money))
+            peak_at_dd = float(peak[(equity - peak).idxmin()])
+            eq_dd_pct = (eq_dd_money / peak_at_dd * 100.0) if peak_at_dd else 0.0
+        except Exception:
+            pass
+    if not eq_dd_money and max_dd < 0:
+        eq_dd_money = abs(max_dd) * float(init_cash)
+        eq_dd_pct = abs(max_dd) * 100.0
+
+    # Consecutive + direction splits from trade log
+    con_profit_max = con_loss_max = 0
+    max_win_trade = float(m.get("largest_win", 0) or 0)
+    max_loss_trade = float(m.get("largest_loss", 0) or 0)
+    short_trades = long_trades = win_short = win_long = 0
+    try:
+        if trades is not None and len(trades) > 0:
+            pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit") if c in trades.columns), None)
+            dir_col = next((c for c in ("direction", "Direction", "type") if c in trades.columns), None)
+            if pnl_col:
+                signs = (trades[pnl_col] > 0).astype(int).tolist()
+                best = cur = 0
+                for s in signs:
+                    cur = cur + 1 if s == 1 else 0
+                    best = max(best, cur)
+                con_profit_max = int(best)
+                best = cur = 0
+                for s in signs:
+                    cur = cur + 1 if s == 0 else 0
+                    best = max(best, cur)
+                con_loss_max = int(best)
+            if dir_col is not None and pnl_col:
+                longs = trades[trades[dir_col] > 0]
+                shorts = trades[trades[dir_col] < 0]
+                long_trades, short_trades = len(longs), len(shorts)
+                win_long = int((longs[pnl_col] > 0).sum()) if len(longs) else 0
+                win_short = int((shorts[pnl_col] > 0).sum()) if len(shorts) else 0
+    except Exception:
+        pass
+
+    return {
+        "STAT_INITIAL_DEPOSIT": float(init_cash),
+        "STAT_PROFIT": net,
+        "STAT_GROSS_PROFIT": gross_p,
+        "STAT_GROSS_LOSS": gross_l,
+        "STAT_PROFIT_FACTOR": pf,
+        "STAT_RECOVERY_FACTOR": rec,
+        "STAT_SHARPE_RATIO": sharpe,
+        "STAT_EXPECTED_PAYOFF": exp_payoff,
+        "STAT_TRADES": n,
+        "STAT_WIN_TRADES": n_wins,
+        "STAT_LOSS_TRADES": max(n - n_wins, 0),
+        "STAT_WIN_PERCENT": (n_wins / n * 100.0) if n else 0.0,
+        "STAT_EQUITY_DD": eq_dd_money,
+        "STAT_EQUITY_DD_PERCENT": eq_dd_pct,
+        "STAT_EQUITY_DD_RELATIVE": eq_dd_pct,
+        "STAT_BALANCE_DD": eq_dd_money,
+        "STAT_BALANCE_DD_PERCENT": eq_dd_pct,
+        "STAT_MAX_PROFITTRADE": max_win_trade,
+        "STAT_MAX_LOSSTRADE": max_loss_trade,
+        "STAT_CONPROFITMAX": con_profit_max,
+        "STAT_CONLOSSMAX": con_loss_max,
+        "STAT_SHORT_TRADES": short_trades,
+        "STAT_LONG_TRADES": long_trades,
+        "STAT_WIN_SHORT_TRADES": win_short,
+        "STAT_WIN_LONG_TRADES": win_long,
+        "STAT_MIN_MARGINLEVEL": None,  # needs margin model — not simulated
+    }
