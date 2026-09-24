@@ -52,3 +52,7 @@ config/local_*.yaml
 
 # Jupyter
 .ipynb_checkpoints/
+
+data/ticks_raw/
+data/ticks_parquet/
+

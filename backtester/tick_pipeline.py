@@ -57,13 +57,23 @@ class DownloadResult:
 
 
 def _session_with_retries() -> requests.Session:
-    """Create a requests session with retry strategy."""
+    """Create a requests session with retry strategy.
+
+    Dukascopy throttles rapid sequential pulls (HTTP 429), so we retry with
+    exponential backoff, honor Retry-After, and send a browser User-Agent.
+    """
     session = requests.Session()
+    session.headers.update({
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/126.0 Safari/537.36"),
+    })
     retry = Retry(
-        total=3,
-        backoff_factor=1,
+        total=6,
+        backoff_factor=2,
         status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["HEAD", "GET", "OPTIONS"]
+        allowed_methods=["HEAD", "GET", "OPTIONS"],
+        respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(max_retries=retry)
     session.mount("http://", adapter)
@@ -72,31 +82,41 @@ def _session_with_retries() -> requests.Session:
 
 
 def _dukascopy_url(symbol: str, year: int, month: int, day: int, hour: int) -> str:
-    """Generate Dukascopy .bi5.gz URL for a specific hour."""
-    # Dukascopy format: https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH:02d}/{DAY:02d}/{HOUR:02d}h_ticks.bi5.gz
-    # Month is 0-indexed in URL
-    return f"https://datafeed.dukascopy.com/datafeed/{symbol.upper()}/{year}/{month:02d}/{day:02d}/{hour:02d}h_ticks.bi5.gz"
+    """Generate Dukascopy .bi5 URL for a specific hour.
+
+    Dukascopy format: https://datafeed.dukascopy.com/datafeed/{SYMBOL}/{YEAR}/{MONTH:02d}/{DAY:02d}/{HOUR:02d}h_ticks.bi5
+    Month is 0-indexed in URL. The .bi5 payload is LZMA-alone compressed
+    (NOT gzip despite old docs); decompress with lzma.FORMAT_ALONE.
+    """
+    return f"https://datafeed.dukascopy.com/datafeed/{symbol.upper()}/{year}/{month:02d}/{day:02d}/{hour:02d}h_ticks.bi5"
 
 
-def _parse_bi5(data: bytes) -> list[TickRecord]:
+def _decompress_bi5(data: bytes) -> bytes:
+    """Decompress a .bi5 payload (LZMA-alone; legacy gzip fallback)."""
+    import lzma
+    if data[:2] == b"\x1f\x8b":
+        import gzip as _gzip
+        return _gzip.decompress(data)
+    return lzma.decompress(data, format=lzma.FORMAT_ALONE)
+
+
+def _parse_bi5(data: bytes, hour_start_ms: int | None = None,
+               point_size: int = 5) -> list[TickRecord]:
     """Parse Dukascopy .bi5 binary data into tick records.
 
-    Format (20 bytes per record):
-    - 8 bytes: timestamp (milliseconds since epoch, but actually custom format)
-    - 4 bytes: ask price (int, multiply by 1e-5)
-    - 4 bytes: bid price (int, multiply by 1e-5)
-    - 2 bytes: ask volume (int, lots * 100)
-    - 2 bytes: bid volume (int, lots * 100)
+    Real format (20 bytes per record, BIG-endian, verified against live feed):
+    - 4 bytes: milliseconds offset within the hour (uint32)
+    - 4 bytes: ask price as int (divide by 10^point_size)
+    - 4 bytes: bid price as int (divide by 10^point_size)
+    - 4 bytes: ask volume (float32, millions)
+    - 4 bytes: bid volume (float32, millions)
 
-    Actually Dukascopy format:
-    - 8 bytes: timestamp (milliseconds since 1970-01-01)
-    - 4 bytes: ask price (fixed point, 5 decimals)
-    - 4 bytes: bid price (fixed point, 5 decimals)
-    - 2 bytes: ask volume (in 0.01 lots)
-    - 2 bytes: bid volume (in 0.01 lots)
+    Absolute timestamp = hour_start_ms + offset. When hour_start_ms is None,
+    timestamps fall back to raw offsets (for backward-compat probing only).
     """
     records = []
     n_records = len(data) // BI5_RECORD_SIZE
+    divisor = 10.0 ** point_size
 
     for i in range(n_records):
         offset = i * BI5_RECORD_SIZE
@@ -104,22 +124,21 @@ def _parse_bi5(data: bytes) -> list[TickRecord]:
         if len(chunk) < BI5_RECORD_SIZE:
             break
 
-        # Unpack: timestamp (q), ask (i), bid (i), ask_vol (h), bid_vol (h)
-        # All big-endian
-        ts_ms, ask_raw, bid_raw, ask_vol_raw, bid_vol_raw = struct.unpack(">qiiHH", chunk)
+        ms_off, ask_raw, bid_raw, ask_vol, bid_vol = struct.unpack(">IIIff", chunk)
 
-        # Convert timestamp
-        ts = pd.Timestamp(ts_ms, unit="ms", tz="UTC")
+        if hour_start_ms is not None:
+            ts = pd.Timestamp(hour_start_ms + ms_off, unit="ms", tz="UTC")
+        else:
+            ts = pd.Timestamp(ms_off, unit="ms", tz="UTC")
 
-        # Convert prices (5 decimal places)
-        ask = ask_raw / 100000.0
-        bid = bid_raw / 100000.0
+        ask = ask_raw / divisor
+        bid = bid_raw / divisor
 
-        # Convert volumes (0.01 lots)
-        ask_vol = ask_vol_raw / 100.0
-        bid_vol = bid_vol_raw / 100.0
+        # Sanity: skip corrupt records (negative prices, inverted >100-pip spread)
+        if ask <= 0 or bid <= 0 or (ask - bid) / divisor > 0.01:
+            continue
 
-        records.append(TickRecord(ts, bid, ask, bid_vol, ask_vol))
+        records.append(TickRecord(ts, bid, ask, float(bid_vol), float(ask_vol)))
 
     return records
 
@@ -138,7 +157,7 @@ def download_dukascopy_hour(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     url = _dukascopy_url(symbol, year, month, day, hour)
-    fname = f"{symbol.upper()}_{year}{month:02d}{day:02d}_{hour:02d}.bi5.gz"
+    fname = f"{symbol.upper()}_{year}{month:02d}{day:02d}_{hour:02d}.bi5"
     out_path = out_dir / fname
 
     if out_path.exists():
@@ -156,6 +175,17 @@ def download_dukascopy_hour(
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
 
+        # Validate payload: LZMA-alone magic (0x5d) or legacy gzip.
+        # Rate-limit HTML pages / truncated bodies fail here and are deleted
+        # so they never poison the cache (exists() == trusted).
+        with open(out_path, "rb") as f:
+            magic = f.read(2)
+        import os as _os
+        if len(magic) < 2 or (magic[:1] != b"\x5d" and magic != b"\x1f\x8b"):
+            out_path.unlink(missing_ok=True)
+            return DownloadResult(False, symbol, "", "", 0, "",
+                                  "bad payload (rate-limit page or truncated)", "dukascopy")
+
         return DownloadResult(True, symbol, f"{year}-{month:02d}-{day:02d} {hour:02d}:00",
                               f"{year}-{month:02d}-{day:02d} {hour:02d}:00", 0, str(out_path), "", "dukascopy")
     except Exception as e:
@@ -169,9 +199,16 @@ def download_dukascopy_range(
     start: str,  # "YYYY-MM-DD"
     end: str,    # "YYYY-MM-DD"
     out_dir: Path | str,
-    max_hours: int | None = None
+    max_hours: int | None = None,
+    delay_sec: float = 1.0,
 ) -> list[DownloadResult]:
-    """Download a date range of Dukascopy tick data (hourly files)."""
+    """Download a date range of Dukascopy tick data (hourly files).
+
+    A polite inter-request delay keeps us under Dukascopy's rate limiter
+    (cached files skip the delay entirely).
+    """
+    import time as _time
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -187,12 +224,22 @@ def download_dukascopy_range(
         if max_hours and hours_done >= max_hours:
             break
 
+        # Skip the delay when the file is already cached locally.
+        probe = out_dir / (f"{symbol.upper()}_{current.year}{current.month - 1:02d}"
+                           f"{current.day:02d}_{current.hour:02d}.bi5")
+        if not probe.exists() and results:
+            _time.sleep(delay_sec)
+
         r = download_dukascopy_hour(
             symbol, current.year, current.month - 1, current.day, current.hour,
             out_dir, sess
         )
         results.append(r)
         hours_done += 1
+        # Bad payload = server served a throttle page with HTTP 200.
+        # Back off hard before the next request or every file after this 429s too.
+        if not r.ok and "bad payload" in (r.error or ""):
+            _time.sleep(10)
         current += pd.Timedelta(hours=1)
 
     return results
@@ -351,27 +398,54 @@ def download_ticks_auto(symbol: str, start: str, end: str,
                           f"Unknown source: {prefer}", prefer)
 
 
+def _point_size(symbol: str) -> int:
+    """Decimals used by Dukascopy integer prices for this symbol."""
+    s = symbol.upper().replace("/", "")
+    if "JPY" in s:
+        return 3
+    if s.startswith(("XAU", "XAG")):
+        return 3
+    return 5
+
+
+def _hour_start_from_bi5_name(fname: str) -> int | None:
+    """Reconstruct hour-start epoch ms from SYMBOL_YYYYMMDD_HH.bi5.
+
+    NOTE: the month embedded in our filenames is 0-indexed (same as the
+    Dukascopy URL), so +1 for the real calendar month.
+    """
+    import re
+    m = re.search(r"_(\d{4})(\d{2})(\d{2})_(\d{2})\.bi5$", fname)
+    if not m:
+        return None
+    year, month0, day, hour = map(int, m.groups())
+    ts = pd.Timestamp(year, month0 + 1, day, hour, tz="UTC")
+    return int(ts.value // 1_000_000)
+
+
 def convert_bi5_to_parquet(
     bi5_dir: Path | str,
     parquet_dir: Path | str,
     symbol: str,
     partition_by: str = "day"  # "day" or "month"
 ) -> dict:
-    """Convert all .bi5.gz files in a directory to partitioned parquet."""
+    """Convert all .bi5 files in a directory to partitioned parquet."""
     bi5_dir = Path(bi5_dir)
     parquet_dir = Path(parquet_dir)
     parquet_dir.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(bi5_dir.glob(f"{symbol.upper()}_*.bi5.gz"))
+    files = sorted(bi5_dir.glob(f"{symbol.upper()}_*.bi5"))
     if not files:
-        return {"ok": False, "error": f"No .bi5.gz files found for {symbol} in {bi5_dir}"}
+        return {"ok": False, "error": f"No .bi5 files found for {symbol} in {bi5_dir}"}
 
+    pts = _point_size(symbol)
     all_records = []
     for f in files:
         try:
-            with gzip.open(f, "rb") as gz:
-                data = gz.read()
-            records = _parse_bi5(data)
+            raw = f.read_bytes()
+            data = _decompress_bi5(raw)
+            hour_ms = _hour_start_from_bi5_name(f.name)
+            records = _parse_bi5(data, hour_start_ms=hour_ms, point_size=pts)
             all_records.extend(records)
         except Exception as e:
             print(f"Warning: Failed to parse {f}: {e}")
@@ -399,7 +473,7 @@ def convert_bi5_to_parquet(
             out_path.mkdir(parents=True, exist_ok=True)
             group.drop(columns=["date"]).to_parquet(out_path / "ticks.parquet", index=False)
     else:  # month
-        df["year_month"] = df["timestamp"].dt.to_period("M").astype(str)
+        df["year_month"] = df["timestamp"].dt.tz_localize(None).dt.to_period("M").astype(str)
         for ym, group in df.groupby("year_month"):
             out_path = parquet_dir / f"symbol={symbol.upper()}" / f"year_month={ym}"
             out_path.mkdir(parents=True, exist_ok=True)
@@ -610,7 +684,7 @@ if __name__ == "__main__":
     # Convert command
     cv = sub.add_parser("convert", help="Convert .bi5.gz files to parquet")
     cv.add_argument("symbol", help="Symbol to convert")
-    cv.add_argument("--bi5-dir", default=str(DEFAULT_DATA_DIR), help="Input dir with .bi5.gz files")
+    cv.add_argument("--bi5-dir", default=str(DEFAULT_DATA_DIR), help="Input dir with .bi5 files")
     cv.add_argument("--parquet-dir", default=str(DEFAULT_PARQUET_DIR), help="Output parquet dir")
     cv.add_argument("--partition", choices=["day", "month"], default="day", help="Partition strategy")
 
@@ -622,8 +696,8 @@ if __name__ == "__main__":
     vd.add_argument("--end", default=None, help="End date filter")
 
     # Parse .bi5 file command
-    pp = sub.add_parser("parse", help="Parse a single .bi5.gz file")
-    pp.add_argument("file", help="Path to .bi5.gz file")
+    pp = sub.add_parser("parse", help="Parse a single .bi5 file")
+    pp.add_argument("file", help="Path to .bi5 file")
 
     args = parser.parse_args()
 
@@ -647,9 +721,10 @@ if __name__ == "__main__":
     elif args.cmd == "parse":
         test_file = Path(args.file)
         if test_file.exists():
-            with gzip.open(test_file, "rb") as f:
-                data = f.read()
-            records = _parse_bi5(data)
+            data = _decompress_bi5(test_file.read_bytes())
+            sym_guess = test_file.name.split("_")[0] if "_" in test_file.name else "EURUSD"
+            records = _parse_bi5(data, hour_start_ms=_hour_start_from_bi5_name(test_file.name),
+                                 point_size=_point_size(sym_guess))
             print(f"Parsed {len(records)} ticks")
             for r in records[:5]:
                 print(f"  {r.timestamp} bid={r.bid:.5f} ask={r.ask:.5f} spread={r.ask-r.bid:.5f}")

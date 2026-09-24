@@ -60,17 +60,140 @@ def find_cache(symbol: str, timeframe: str) -> Path | None:
     return matches[0] if matches else None
 
 
-def load_data(symbol: str, timeframe: str) -> pd.DataFrame | None:
-    """Load data from cache, fetching from Yahoo if missing."""
-    cached = find_cache(symbol, timeframe)
-    if cached:
-        print(f"  [data] Loading cached: {cached.name}")
-        df = pd.read_parquet(cached)
-        print(f"  [data] {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
-        return df
+def _pip_size(symbol: str) -> float:
+    s = symbol.upper()
+    if "JPY" in s:
+        return 0.01
+    if s.startswith(("XAU", "XAG")):
+        return 0.01
+    return 0.0001
+
+
+def _resample_rule(timeframe: str) -> str:
+    return {"M1": "1min", "M5": "5min", "M15": "15min", "M30": "30min",
+            "H1": "1h", "D1": "1D"}.get(timeframe.upper(), "1h")
+
+
+def load_dukascopy(symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame | None:
+    """R019: Dukascopy ticks -> resampled OHLCV with REAL volume + spread.
+
+    Downloads hourly .bi5 tick files, converts to parquet, resamples mid-price
+    to OHLC and sums real tick volumes. Cached in data/cache/ as
+    {SYM}_{TF}_duka_{hash}.parquet so re-runs are instant.
+    """
+    from backtester.tick_pipeline import (
+        download_dukascopy_range, convert_bi5_to_parquet, load_ticks_parquet,
+    )
+    import hashlib
+
+    sym = symbol.upper().replace("/", "")
+    # Dukascopy feed uses a slash for metals (XAU/USD); 6-letter FX pairs are plain.
+    feed_sym = sym
+    if sym.startswith(("XAU", "XAG")) and "/" not in symbol:
+        feed_sym = f"{sym[:3]}/{sym[3:]}"
+
+    end = pd.Timestamp.now(tz="UTC")
+    start = end - pd.Timedelta(days=days)
+    start_s, end_s = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+    print(f"  [data] Dukascopy {feed_sym} {timeframe}: {start_s} -> {end_s} ({days}d)")
+
+    raw_dir = Path("data/ticks_raw") / sym
+    pq_dir = Path("data/ticks_parquet")
+    results = download_dukascopy_range(
+        feed_sym, start_s, end_s, raw_dir, max_hours=days * 24 + 48)
+    ok = sum(1 for r in results if r.ok)
+    print(f"  [data] downloaded {ok}/{len(results)} hourly files")
+    if ok == 0:
+        print(f"  [data] Dukascopy returned nothing (bad symbol or blocked?)")
+        return None
+
+    conv = convert_bi5_to_parquet(raw_dir, pq_dir, sym, partition_by="month")
+    if not conv.get("ok"):
+        print(f"  [data] bi5 conversion failed: {conv.get('error')}")
+        return None
+    print(f"  [data] parsed {conv.get('rows', 0)} ticks")
+
+    ticks = load_ticks_parquet(pq_dir, sym, start_s, end_s)
+    if ticks is None or len(ticks) == 0:
+        print(f"  [data] no ticks loaded from parquet")
+        return None
+
+    # Resample mid-price to OHLC, sum REAL volumes, mean spread
+    ticks = ticks.sort_values("timestamp")
+    ticks["mid"] = (ticks["bid"] + ticks["ask"]) / 2.0
+    ticks = ticks.set_index("timestamp")
+    rule = _resample_rule(timeframe)
+    ohlc = ticks["mid"].resample(rule).ohlc()
+    ohlc.columns = ["open", "high", "low", "close"]
+    ohlc["volume"] = (ticks["bid_volume"] + ticks["ask_volume"]).resample(rule).sum()
+    ohlc["spread_pips"] = ticks["spread"].resample(rule).mean() / _pip_size(symbol)
+    df = ohlc.dropna(subset=["open"])
+    if len(df) == 0:
+        print(f"  [data] resample produced no bars")
+        return None
+
+    # Cache in the standard OHLCV format (+spread_pips bonus for DQ spread profile)
+    cache = Path("data/cache")
+    cache.mkdir(parents=True, exist_ok=True)
+    content = f"{sym}_{timeframe}_duka_{len(df)}_{df.index[0]}_{df.index[-1]}".encode()
+    h = hashlib.md5(content).hexdigest()[:16]
+    out = cache / f"{sym}_{timeframe}_duka_{h}.parquet"
+    df.to_parquet(out)
+    meta = {"symbol": sym, "timeframe": timeframe, "rows": len(df),
+            "start": str(df.index[0]), "end": str(df.index[-1]), "source": "dukascopy"}
+    (cache / f"{sym}_{timeframe}_duka_{h}.meta.json").write_text(json.dumps(meta, indent=2))
+    print(f"  [data] {len(df)} {timeframe} bars with real volume, cached as {out.name}")
+    return df
+
+
+def load_data(symbol: str, timeframe: str, source: str = "auto",
+              duka_days: int = 90) -> pd.DataFrame | None:
+    """Load data: cache -> Dukascopy (primary, R019) -> Yahoo (fallback)."""
+    sym = symbol.upper().replace("/", "")
+
+    def _load_cached():
+        cached = find_cache(sym, timeframe)
+        if cached:
+            print(f"  [data] Loading cached: {cached.name}")
+            df = pd.read_parquet(cached)
+            print(f"  [data] {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
+            return df
+        return None
+
+    if source == "yahoo":
+        df = _load_cached()
+        if df is not None:
+            return df
+    elif source == "dukascopy":
+        # Prefer a dukascopy cache file; else download fresh ticks.
+        duka = sorted(Path("data/cache").glob(f"{sym}_{timeframe.upper()}_duka_*.parquet"),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+        if duka:
+            print(f"  [data] Loading cached: {duka[0].name}")
+            df = pd.read_parquet(duka[0])
+            print(f"  [data] {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
+            return df
+        return load_dukascopy(sym, timeframe, days=duka_days)
+    else:  # auto: duka cache -> any cache -> duka download (FX) -> yahoo
+        duka = sorted(Path("data/cache").glob(f"{sym}_{timeframe.upper()}_duka_*.parquet"),
+                      key=lambda p: p.stat().st_mtime, reverse=True)
+        if duka:
+            print(f"  [data] Loading cached: {duka[0].name}")
+            df = pd.read_parquet(duka[0])
+            print(f"  [data] {len(df)} bars, {df.index[0].date()} -> {df.index[-1].date()}")
+            return df
+        df = _load_cached()
+        if df is not None:
+            return df
+        # No cache at all: try Dukascopy first for FX spot, else Yahoo.
+        if len(sym) == 6 and sym.isalpha():
+            df = load_dukascopy(sym, timeframe, days=duka_days)
+            if df is not None:
+                return df
 
     # Try Yahoo fetch
     print(f"  [data] No cache for {symbol} {timeframe}, fetching from Yahoo...")
+    cache = Path("data/cache")
     try:
         import yfinance as yf
         tf_map = {"M1": "1m", "M5": "5m", "M15": "15m", "M30": "30m",
@@ -161,8 +284,10 @@ def run_pipeline(args) -> int:
     print("=" * 75)
 
     # ---- 1. Data load ----
-    print(f"\n[1/8] Loading {args.symbol} {args.timeframe}…")
-    df = load_data(args.symbol, args.timeframe)
+    print(f"\n[1/8] Loading {args.symbol} {args.timeframe} (source={args.source})…")
+    df = load_data(args.symbol, args.timeframe,
+                   source=args.source, duka_days=args.duka_days)
+    report["data_source_requested"] = args.source
     if df is None or len(df) < 200:
         print(f"  FAIL: insufficient data ({len(df) if df is not None else 0} bars)")
         return 1
@@ -444,6 +569,11 @@ Examples:
     parser.add_argument("--strategy", default="adx", help="Strategy name (default: adx)")
     parser.add_argument("--params", default="{}", help="JSON params, e.g. '{\"bars_calculate\": 10}'")
     parser.add_argument("--capital", type=float, default=10000.0, help="Initial cash")
+    parser.add_argument("--source", default="auto",
+                        choices=["auto", "dukascopy", "yahoo"],
+                        help="Data source: auto = duka cache -> any cache -> duka download (FX) -> yahoo")
+    parser.add_argument("--duka-days", type=int, default=90,
+                        help="Days of tick history to pull from Dukascopy when downloading")
     parser.add_argument("--min-grade", default="C", choices=["A", "B", "C", "D", "F"],
                         help="Minimum DQ grade to pass gate (default: C)")
     parser.add_argument("--force", action="store_true", help="Override DQ gate failure")
