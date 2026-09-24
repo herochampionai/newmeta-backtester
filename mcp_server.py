@@ -1,0 +1,282 @@
+"""R022: MCP server — the backtester as agent tools.
+
+Exposes the pipeline stages as Model Context Protocol tools over stdio, so
+any MCP-capable agent (ours, Claude, MT5's new assistant) can drive research:
+backtest -> quality gate -> walk-forward -> sensitivity -> stress -> full chain.
+
+Run:
+    python mcp_server.py            # stdio (for MCP clients)
+    python -m mcp_server            # same
+
+Tool speed guide (for agents): backtest/data_quality are seconds on cached
+data; walk_forward/sensitivity/stress take ~30-90s; full_pipeline ~1-2 min.
+Clients should set generous timeouts for the slow ones.
+"""
+from __future__ import annotations
+import json
+import sys
+from pathlib import Path
+
+if __name__ == "__main__" and __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import pandas as pd
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("newmeta-backtester")
+
+
+def _clean(obj):
+    """Make numpy/pandas scalars JSON-safe."""
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: _clean(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_clean(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, float) and (pd.isna(obj)):
+        return 0.0
+    return obj
+
+
+def _parse_params(params_json) -> dict:
+    if params_json is None:
+        return {}
+    if isinstance(params_json, dict):
+        return params_json
+    return json.loads(params_json)
+
+
+def _load(symbol: str, timeframe: str, source: str):
+    import run_pipeline as rp
+    df = rp.load_data(symbol, timeframe, source=source, duka_days=90)
+    if df is None or len(df) == 0:
+        raise RuntimeError(f"no data for {symbol} {timeframe} (source={source})")
+    return df
+
+
+def _backtest_df(df, strategy: str, params: dict, capital: float, symbol: str):
+    import run_pipeline as rp
+    from backtester.engine_full import run_full
+    strat = rp._make_strategy(strategy, params)
+    sig = strat.generate(df)
+    r = run_full(df, {strategy: (sig.entries.values.astype(int),
+                                 sig.exits.values.astype(int))},
+                 init_cash=capital, symbol=symbol, strict_data=False)
+    return r.get("metrics", {}), r.get("trades", pd.DataFrame())
+
+
+@mcp.tool()
+def backtest(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+             params_json: str = "{}", capital: float = 10000.0,
+             source: str = "auto") -> dict:
+    """Run a backtest. Returns net PnL, Sharpe, max drawdown, trades, win rate. Fast (seconds on cached data)."""
+    import run_pipeline as rp
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+    metrics, trades = _backtest_df(df, strategy, params, capital, symbol)
+    _ = rp  # keep import for strategy factory side-effect safety
+    return _clean({
+        "symbol": symbol, "timeframe": timeframe, "strategy": strategy,
+        "params": params, "bars": len(df),
+        "net_pnl": round(float(metrics.get("net_pnl", 0) or 0), 2),
+        "sharpe": round(float(metrics.get("sharpe", 0) or 0), 3),
+        "max_drawdown_pct": round(float(metrics.get("max_drawdown", 0) or 0) * 100, 2),
+        "trades": len(trades),
+        "win_rate": round(float(metrics.get("win_rate", 0) or 0), 4),
+    })
+
+
+@mcp.tool()
+def data_quality(symbol: str = "EURUSD", timeframe: str = "H1",
+                 source: str = "auto") -> dict:
+    """Grade the dataset (A-F) with gap/outlier/stale/volume/spread flags. Fast."""
+    from backtester.data_quality import analyze_data_quality, gate_check
+    df = _load(symbol, timeframe, source)
+    dq = analyze_data_quality(df, symbol, timeframe)
+    gate = gate_check(dq, min_grade="C")
+    return _clean({
+        "symbol": symbol, "timeframe": timeframe, "bars": len(df),
+        "grade": dq.grade, "score": dq.score,
+        "gate_passed_C": bool(gate["passed"]),
+        "gaps": {"total": dq.gaps.total_gaps, "pct": dq.gaps.gap_pct},
+        "outliers": {"count": dq.outliers.count, "pct": dq.outliers.pct},
+        "stale_days": dq.stale.days_since_last,
+        "volume_severity": dq.volume.severity,
+        "spread_severity": dq.spread.severity if dq.spread else None,
+        "flags": dq.flags,
+    })
+
+
+@mcp.tool()
+def walk_forward(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                 params_json: str = "{}", train_months: int = 4, test_months: int = 1,
+                 trials: int = 5, capital: float = 10000.0,
+                 source: str = "auto") -> dict:
+    """Anchored walk-forward validation. SLOW (~30-60s). Returns verdict
+    (ACCEPT/OVERFIT), passed/failed windows, and best OOS params."""
+    import run_pipeline as rp
+    from analysis.walkforward_v2 import walk_forward_v2
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+
+    def criterion_fn(p):
+        m, _ = _backtest_df(df, strategy, p, capital, symbol)
+        return m.get("sharpe", 0)
+
+    from analysis.auto_iterate import bounds_from_params
+    spec = bounds_from_params(params) if params else {}
+    if not spec:
+        return {"error": "no numeric params to vary", "verdict": "SKIPPED"}
+    _ = rp
+    wf = walk_forward_v2(df=df, strategy_name=strategy, param_spec=spec,
+                         criterion_fn=criterion_fn, train_months=train_months,
+                         test_months=test_months, roll_months=1, n_trials=trials,
+                         anchored=True, min_train_bars=500, min_test_bars=200)
+    wins = list(wf.windows or [])
+    best = None
+    best_score = float("-inf")
+    for w in wins:
+        if w.passed and w.test_score is not None and w.test_score > best_score:
+            best, best_score = w, w.test_score
+    if best is None and wins:
+        scored = [w for w in wins if w.test_score is not None]
+        if scored:
+            best = max(scored, key=lambda w: w.test_score)
+            best_score = best.test_score
+    return _clean({
+        "verdict": wf.overall_verdict, "windows": len(wins),
+        "passed": wf.passed_count, "failed": wf.failed_count,
+        "best_params": dict(best.params) if best and best.params else {},
+        "best_oos_score": best_score if best_score != float("-inf") else 0.0,
+    })
+
+
+@mcp.tool()
+def sensitivity(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                params_json: str = "{}", n_samples: int = 32,
+                capital: float = 10000.0, source: str = "auto") -> dict:
+    """Sobol parameter sensitivity (total/first-order indices). SLOW (~30s+)."""
+    from analysis.parameter_sensitivity import analyze_parameter_sensitivity
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+
+    def evaluator(p):
+        m, _ = _backtest_df(df, strategy, p, capital, symbol)
+        return m.get("net_pnl", 0)
+
+    specs = []
+    for k, v in params.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v == 0:
+            continue
+        if isinstance(v, int):
+            low, high = max(1, int(v * 0.5)), int(v * 1.5) + 1
+            specs.append({"name": k, "low": low, "high": high, "type": "int"})
+        else:
+            specs.append({"name": k, "low": v * 0.5, "high": v * 1.5, "type": "float"})
+    if not specs:
+        return {"error": "no numeric params", "ranking": []}
+    sens = analyze_parameter_sensitivity(param_specs=specs, evaluator=evaluator,
+                                         n_samples=n_samples)
+    return _clean({
+        "ranking": sens.get("importance_ranking", []),
+        "sobol_S": sens.get("sobol", {}).get("S", []),
+    })
+
+
+@mcp.tool()
+def stress(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+           params_json: str = "{}", capital: float = 10000.0,
+           source: str = "auto") -> dict:
+    """Adversarial stress across 6 crisis scenarios. SLOW (~30s).
+    Returns ROBUST/MARGINAL/FRAGILE verdict + worst scenario."""
+    from analysis.adversarial_stress import run_stress_test, CRISIS_SCENARIOS
+    import run_pipeline as rp
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+
+    def strat_fn(p):
+        def fn(d):
+            m, _ = _backtest_df(d, strategy, p, capital, symbol)
+            return m
+        return fn
+
+    _ = rp
+    res = run_stress_test(df=df, strategy_fn=strat_fn(params))
+    return _clean({
+        "verdict": res.get("verdict"), "worst_scenario": res.get("worst_scenario"),
+        "scenarios": list(CRISIS_SCENARIOS.keys()),
+    })
+
+
+@mcp.tool()
+def significance(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                 params_json: str = "{}", capital: float = 10000.0,
+                 n_trials: int = 5, source: str = "auto") -> dict:
+    """Statistical significance: A/B t-test + Mann-Whitney + PSR + Deflated
+    Sharpe (multiple-testing corrected). Fast."""
+    from analysis.stat_tests import compare_strategies
+    from analysis.statistical_significance import (
+        probabilistic_sharpe_ratio, deflated_sharpe_ratio)
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+    metrics, trades = _backtest_df(df, strategy, params, capital, symbol)
+    pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
+                    if c in trades.columns), None)
+    if pnl_col is None or len(trades) < 10:
+        return {"error": f"need >=10 trades with PnL (have {len(trades)})"}
+    rets = trades[pnl_col].values.astype(float)
+    v = compare_strategies(rets, rets * 0.5)
+    obs_sr = float(metrics.get("sharpe", 0) or 0)
+    s = pd.Series(rets)
+    skew = float(s.skew()) if len(s) > 2 else 0.0
+    kurt = float(s.kurtosis() + 3.0) if len(s) > 3 else 3.0
+    psr = probabilistic_sharpe_ratio(obs_sr, n_trials=n_trials, skewness=skew, kurtosis=kurt)
+    dsr = deflated_sharpe_ratio(obs_sr, n_trials=n_trials, skewness=skew, kurtosis=kurt)
+    return _clean({
+        "ab_verdict": v.get("verdict"),
+        "t_p": v.get("t_test", {}).get("p_value"),
+        "cohens_d": v.get("t_test", {}).get("cohens_d"),
+        "psr": psr.get("psr"), "psr_verdict": psr.get("verdict"),
+        "dsr": dsr.get("dsr"), "dsr_verdict": dsr.get("verdict"),
+        "observed_sharpe": obs_sr, "n_trades": len(trades),
+    })
+
+
+@mcp.tool()
+def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                  params_json: str = "{}", capital: float = 10000.0,
+                  source: str = "auto", auto_iterate: int = 0) -> dict:
+    """Run the entire 8-stage chain. VERY SLOW (1-3 min). Returns the
+    consolidated report (same artifact as run_pipeline.py)."""
+    import argparse
+    import run_pipeline as rp
+    args = argparse.Namespace(
+        symbol=symbol, timeframe=timeframe, strategy=strategy,
+        params=params_json if isinstance(params_json, str) else json.dumps(params_json),
+        capital=capital, source=source, duka_days=90, min_grade="C", force=True,
+        wf_train=4, wf_test=1, wf_anchored=True, auto_iterate=auto_iterate,
+        skip_stress=False, skip_sensitivity=False, skip_significance=False,
+        list_data=False)
+    code = rp.run_pipeline(args)
+    reports = sorted(Path("output/reports").glob("pipeline_*.json"),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+    # Exclude iterate audits; want the main report. Pick newest non-iterate file
+    # if the newest is an iterate audit... simplest: newest pipeline_ file that
+    # does not end with _iterate.json.
+    main = [p for p in reports if not p.name.endswith("_iterate.json")]
+    latest = main[0] if main else (reports[0] if reports else None)
+    summary = {}
+    if latest:
+        summary = json.loads(latest.read_text())
+    return _clean({"exit_code": code, "report_file": str(latest) if latest else None,
+                   "report": summary})
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
