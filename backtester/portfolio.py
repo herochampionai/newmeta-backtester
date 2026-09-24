@@ -74,16 +74,23 @@ class FXRate:
 
 @dataclass
 class PortfolioMetrics:
-    """Aggregated portfolio metrics."""
+    """Aggregated portfolio metrics.
+
+    VaR semantics (see compute_metrics): var_95/var_99/expected_shortfall
+    are negative-or-zero dollar losses at the stated confidence, and
+    var_method names how they were derived (equity_curve preferred,
+    per_trade fallback). A var_method of "" means insufficient data.
+    """
     total_pnl: float = 0.0
     total_pnl_base: float = 0.0  # converted to base currency
     total_margin: float = 0.0
     equity: float = 0.0
     free_margin: float = 0.0
     margin_level: Optional[float] = None
-    var_95: float = 0.0  # Value at Risk 95%
+    var_95: float = 0.0  # Value at Risk 95% (negative $ loss)
     var_99: float = 0.0
     expected_shortfall: float = 0.0
+    var_method: str = ""
     max_correlation_exposure: float = 0.0
     n_positions: int = 0
     n_currencies: int = 0
@@ -173,7 +180,8 @@ class MultiCurrencyPortfolio:
         self.positions.append(pos)
         return pos
 
-    def compute_metrics(self, returns: np.ndarray | None = None) -> PortfolioMetrics:
+    def compute_metrics(self, returns: np.ndarray | None = None,
+                          equity=None) -> PortfolioMetrics:
         """Compute aggregated portfolio metrics including VaR.
 
         If no positions are tracked but equity_history exists, derives total_pnl
@@ -181,10 +189,13 @@ class MultiCurrencyPortfolio:
         the user just wants portfolio-level metrics from a backtest result
         without manually adding every closed trade as a Position.
 
-        Known limitation (by design, conservative): VaR/CVaR scale a
-        per-trade return quantile by the absolute total PnL, which overstates
-        tail loss versus a proper equity-curve VaR. Treat VaR here as a
-        pessimistic bound, not a calibrated risk number.
+        VaR methodology (historical simulation, honest units):
+        - equity curve given (>= 30 points): period returns -> 5th/1st
+          percentile x latest equity = dollar VaR; ES = mean tail loss.
+          Method: "equity_curve".
+        - else trade PnLs given: 5th/1st percentile of per-trade $ outcomes
+          (i.e. "95% of single trades lose no more than $X") + tail mean.
+          Method: "per_trade". NOT scaled by total PnL.
         """
         m = PortfolioMetrics(base_currency=self.base_currency)
         m.n_positions = len(self.positions)
@@ -224,18 +235,45 @@ class MultiCurrencyPortfolio:
         if m.total_margin > 0:
             m.margin_level = (m.equity / m.total_margin) * 100
 
-        # VaR computation (parametric)
-        if returns is not None and len(returns) > 10:
-            returns = np.asarray(returns)
-            returns = returns[np.isfinite(returns)]
-            if len(returns) > 5:
-                m.var_95 = float(np.percentile(returns, 5)) * abs(m.total_pnl_base)
-                m.var_99 = float(np.percentile(returns, 1)) * abs(m.total_pnl_base)
-                # Expected Shortfall (CVaR) - mean of worst 5%
-                threshold = np.percentile(returns, 5)
-                tail = returns[returns <= threshold]
-                if len(tail) > 0:
-                    m.expected_shortfall = float(np.mean(tail)) * abs(m.total_pnl_base)
+        # VaR via historical simulation. Preferred input is an equity
+        # curve (per-period portfolio risk); fallback is the per-trade PnL
+        # distribution (per-trade risk). Never multiply a quantile by an
+        # unrelated total — that mixes units and fabricates tail size.
+        eq_vals = None
+        if equity is not None:
+            try:
+                import pandas as _pd
+                eq_vals = (_pd.Series(equity).dropna().astype(float).values
+                           if not isinstance(equity, _pd.Series)
+                           else equity.dropna().astype(float).values)
+            except Exception:
+                eq_vals = None
+        if eq_vals is not None and len(eq_vals) >= 30:
+            base = eq_vals[:-1]
+            rets = (eq_vals[1:] - base) / np.where(base != 0, base, np.nan)
+            rets = rets[np.isfinite(rets)]
+            if len(rets) >= 10:
+                ref_equity = float(eq_vals[-1])
+                q95 = float(np.percentile(rets, 5))
+                q99 = float(np.percentile(rets, 1))
+                m.var_95 = min(0.0, q95 * ref_equity)
+                m.var_99 = min(0.0, q99 * ref_equity)
+                tail = rets[rets <= q95]
+                m.expected_shortfall = min(0.0, float(np.mean(tail)) * ref_equity) \
+                    if len(tail) > 0 else 0.0
+                m.var_method = "equity_curve"
+        if not m.var_method and returns is not None and len(returns) > 10:
+            pnls = np.asarray(returns, dtype=float)
+            pnls = pnls[np.isfinite(pnls)]
+            if len(pnls) > 5:
+                q95 = float(np.percentile(pnls, 5))
+                q99 = float(np.percentile(pnls, 1))
+                m.var_95 = min(0.0, q95)
+                m.var_99 = min(0.0, q99)
+                tail = pnls[pnls <= q95]
+                m.expected_shortfall = min(0.0, float(np.mean(tail))) \
+                    if len(tail) > 0 else 0.0
+                m.var_method = "per_trade"
 
         # Correlation exposure: max abs correlation between any pair
         if len(self.positions) >= 2:

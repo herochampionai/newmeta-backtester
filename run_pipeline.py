@@ -384,7 +384,7 @@ def run_pipeline(args) -> int:
     user_params = json.loads(args.params) if args.params else {}
 
     def run_bt(params):
-        """Run one full backtest, return (metrics, trades)."""
+        """Run one full backtest, return (metrics, trades, equity)."""
         strat = _make_strategy(args.strategy, params)
         sg = strat.generate(df)
         r = run_full(df,
@@ -392,9 +392,10 @@ def run_pipeline(args) -> int:
                                       sg.exits.values.astype(int))},
                      init_cash=args.capital, **_exec_kwargs(df, args),
                      strict_data=False)
-        return r.get("metrics", {}), r.get("trades", pd.DataFrame())
+        return (r.get("metrics", {}), r.get("trades", pd.DataFrame()),
+                r.get("equity"))
 
-    metrics, trades = run_bt(user_params)
+    metrics, trades, _equity = run_bt(user_params)
     print(f"  Net PnL: ${metrics.get('net_pnl', 0):.2f}")
     # max_drawdown is stored as a fraction (-0.04 = -4%); convert to percent.
     max_dd_pct = metrics.get('max_drawdown', 0) * 100
@@ -508,7 +509,7 @@ def run_pipeline(args) -> int:
             user_params = dict(it.best_params)
             report["params"] = dict(user_params)
             report["stages"]["auto_iterate"]["adopted"] = True
-            metrics, trades = run_bt(user_params)
+            metrics, trades, _equity = run_bt(user_params)
             print(f"  Re-run backtest: PnL=${metrics.get('net_pnl', 0):.2f}, "
                   f"Sharpe={metrics.get('sharpe', 0):.3f}, trades={len(trades)}")
         else:
@@ -632,14 +633,16 @@ def run_pipeline(args) -> int:
         trade_returns = trades[pnl_col].values.astype(float)
         port = MultiCurrencyPortfolio(base_currency="USD", init_balance=args.capital)
         port.update_equity(float(metrics.get("net_pnl", 0) or 0))
-        pm = port.compute_metrics(returns=trade_returns)
+        pm = port.compute_metrics(returns=trade_returns, equity=_equity)
         print(f"  Portfolio equity: ${pm.equity:.2f}, VaR95: ${pm.var_95:.2f}, "
-              f"VaR99: ${pm.var_99:.2f}, ES: ${pm.expected_shortfall:.2f}")
+              f"VaR99: ${pm.var_99:.2f}, ES: ${pm.expected_shortfall:.2f} "
+              f"[{pm.var_method or 'n/a'}]")
         registry.gauge("portfolio_var_95").set(pm.var_95 or 0)
         report["stages"]["portfolio"] = {
             "equity": pm.equity, "total_pnl": pm.total_pnl,
             "var_95": pm.var_95, "var_99": pm.var_99,
             "expected_shortfall": pm.expected_shortfall,
+            "var_method": pm.var_method,
         }
     else:
         print(f"  Portfolio: SKIPPED (no trade returns)")
