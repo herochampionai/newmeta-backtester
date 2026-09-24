@@ -10,16 +10,11 @@ Features:
 """
 
 from __future__ import annotations
-import gzip
 import struct
-import hashlib
 import json
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Iterator
-from datetime import datetime, timedelta
 import pandas as pd
-import numpy as np
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -180,7 +175,6 @@ def download_dukascopy_hour(
         # so they never poison the cache (exists() == trusted).
         with open(out_path, "rb") as f:
             magic = f.read(2)
-        import os as _os
         if len(magic) < 2 or (magic[:1] != b"\x5d" and magic != b"\x1f\x8b"):
             out_path.unlink(missing_ok=True)
             return DownloadResult(False, symbol, "", "", 0, "",

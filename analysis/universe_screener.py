@@ -85,6 +85,14 @@ def _screen_cell(job: tuple) -> dict:
             return {"strategy": strategy_name, "symbol": symbol, "ok": False,
                     "error": f"no cached data with >={min_bars} bars",
                     "elapsed_sec": round(time.time() - t0, 1)}
+        # Honest costs by default (same rule as run_pipeline): explicit spread
+        # wins, else bar mean spread_pips, else 0.5p. Zero-spread screening
+        # ranks fantasy fills first.
+        exec_cfg = dict(exec_cfg or {})
+        exec_cfg.setdefault("slippage_pips", 0.3)
+        if "spread_pips" not in exec_cfg:
+            exec_cfg["spread_pips"] = (float(df["spread_pips"].mean())
+                                       if "spread_pips" in df.columns else 0.5)
         if strategy_name == "adx":
             from strategies.adx import ADX_Strategy
             strat = ADX_Strategy(name="adx", params=params)

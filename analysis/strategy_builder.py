@@ -309,17 +309,12 @@ def generate_code(class_name: str, clauses: list, params: dict) -> str:
 def build_from_brief(text: str, name: str | None = None,
                      out_dir: str | Path = "strategies") -> BriefSpec:
     """Parse -> generate -> write -> import-check. Returns BriefSpec with smoke report."""
-    from strategies import indicators as ind  # noqa: F401  (validates indicator module)
+    import importlib as _il
+    _il.import_module("strategies.indicators")  # fail fast if indicator lib is broken
     clauses = parse_brief(text)
     slug = re.sub(r"[^a-z0-9_]", "", _slug(name or text)) or "custom"
     class_name = "".join(w.capitalize() for w in slug.split("_")) + "_Strategy"
-    # collect numeric params referenced (for the audit trail)
-    params: dict = {}
-    for cl in clauses:
-        for c in cl.conditions:
-            for tok in re.findall(r"(?:period|fast|slow|signal|dev)\s*=\s*([\d.]+)", c.left + c.right):
-                pass
-    code = generate_code(class_name, clauses, params)
+    code = generate_code(class_name, clauses, {})
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"generated_{slug}.py"
@@ -351,7 +346,7 @@ def build_from_brief(text: str, name: str | None = None,
     if not (smoke["len_match"] and smoke["bool_dtype"]):
         raise RuntimeError(f"generated strategy failed structural smoke: {smoke}")
     return BriefSpec(name=slug, class_name=class_name, path=path,
-                     clauses=clauses, params=params, smoke=smoke)
+                     clauses=clauses, params={}, smoke=smoke)
 
 
 # ---------- Self-test ----------

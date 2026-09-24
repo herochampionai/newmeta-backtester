@@ -60,30 +60,45 @@ def _load(symbol: str, timeframe: str, source: str):
     return df
 
 
-def _backtest_df(df, strategy: str, params: dict, capital: float, symbol: str):
+def _exec(df, symbol: str, slippage_pips: float, spread_pips) -> dict:
+    """Same honesty rule as run_pipeline: explicit spread wins, else bar
+    mean spread_pips, else 0.5p. Zero-spread backtests are fantasy."""
+    if spread_pips is None:
+        spread_pips = (float(df["spread_pips"].mean())
+                       if "spread_pips" in df.columns else 0.5)
+    pip = 0.01 if "JPY" in symbol.upper() else 0.0001
+    return {"commission_pips": 0.7, "slippage_pips": float(slippage_pips),
+            "spread_pips": float(spread_pips), "pip_size": pip,
+            "symbol": symbol}
+
+
+def _backtest_df(df, strategy: str, params: dict, capital: float, symbol: str,
+                 slippage_pips: float = 0.3, spread_pips=None):
     import run_pipeline as rp
     from backtester.engine_full import run_full
     strat = rp._make_strategy(strategy, params)
     sig = strat.generate(df)
     r = run_full(df, {strategy: (sig.entries.values.astype(int),
                                  sig.exits.values.astype(int))},
-                 init_cash=capital, symbol=symbol, strict_data=False)
+                 init_cash=capital, **_exec(df, symbol, slippage_pips, spread_pips),
+                 strict_data=False)
     return r.get("metrics", {}), r.get("trades", pd.DataFrame())
 
 
 @mcp.tool()
 def backtest(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
              params_json: str = "{}", capital: float = 10000.0,
-             source: str = "auto") -> dict:
+             source: str = "auto", slippage_pips: float = 0.3,
+             spread_pips: float | None = None) -> dict:
     """Run a backtest. Returns net PnL, Sharpe, max drawdown, trades, win rate. Fast (seconds on cached data)."""
-    import run_pipeline as rp
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
-    metrics, trades = _backtest_df(df, strategy, params, capital, symbol)
-    _ = rp  # keep import for strategy factory side-effect safety
+    metrics, trades = _backtest_df(df, strategy, params, capital, symbol,
+                                   slippage_pips, spread_pips)
     return _clean({
         "symbol": symbol, "timeframe": timeframe, "strategy": strategy,
         "params": params, "bars": len(df),
+        "spread_pips": _exec(df, symbol, slippage_pips, spread_pips)["spread_pips"],
         "net_pnl": round(float(metrics.get("net_pnl", 0) or 0), 2),
         "sharpe": round(float(metrics.get("sharpe", 0) or 0), 3),
         "max_drawdown_pct": round(float(metrics.get("max_drawdown", 0) or 0) * 100, 2),
@@ -117,23 +132,23 @@ def data_quality(symbol: str = "EURUSD", timeframe: str = "H1",
 def walk_forward(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
                  params_json: str = "{}", train_months: int = 4, test_months: int = 1,
                  trials: int = 5, capital: float = 10000.0,
-                 source: str = "auto") -> dict:
+                 source: str = "auto", slippage_pips: float = 0.3,
+                 spread_pips: float | None = None) -> dict:
     """Anchored walk-forward validation. SLOW (~30-60s). Returns verdict
     (ACCEPT/OVERFIT), passed/failed windows, and best OOS params."""
-    import run_pipeline as rp
     from analysis.walkforward_v2 import walk_forward_v2
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
 
     def criterion_fn(p):
-        m, _ = _backtest_df(df, strategy, p, capital, symbol)
+        m, _ = _backtest_df(df, strategy, p, capital, symbol,
+                            slippage_pips, spread_pips)
         return m.get("sharpe", 0)
 
     from analysis.auto_iterate import bounds_from_params
     spec = bounds_from_params(params) if params else {}
     if not spec:
         return {"error": "no numeric params to vary", "verdict": "SKIPPED"}
-    _ = rp
     wf = walk_forward_v2(df=df, strategy_name=strategy, param_spec=spec,
                          criterion_fn=criterion_fn, train_months=train_months,
                          test_months=test_months, roll_months=1, n_trials=trials,
@@ -160,14 +175,17 @@ def walk_forward(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = 
 @mcp.tool()
 def sensitivity(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
                 params_json: str = "{}", n_samples: int = 32,
-                capital: float = 10000.0, source: str = "auto") -> dict:
+                capital: float = 10000.0, source: str = "auto",
+                slippage_pips: float = 0.3,
+                spread_pips: float | None = None) -> dict:
     """Sobol parameter sensitivity (total/first-order indices). SLOW (~30s+)."""
     from analysis.parameter_sensitivity import analyze_parameter_sensitivity
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
 
     def evaluator(p):
-        m, _ = _backtest_df(df, strategy, p, capital, symbol)
+        m, _ = _backtest_df(df, strategy, p, capital, symbol,
+                            slippage_pips, spread_pips)
         return m.get("net_pnl", 0)
 
     specs = []
@@ -192,21 +210,21 @@ def sensitivity(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "
 @mcp.tool()
 def stress(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
            params_json: str = "{}", capital: float = 10000.0,
-           source: str = "auto") -> dict:
+           source: str = "auto", slippage_pips: float = 0.3,
+           spread_pips: float | None = None) -> dict:
     """Adversarial stress across 6 crisis scenarios. SLOW (~30s).
     Returns ROBUST/MARGINAL/FRAGILE verdict + worst scenario."""
     from analysis.adversarial_stress import run_stress_test, CRISIS_SCENARIOS
-    import run_pipeline as rp
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
 
     def strat_fn(p):
         def fn(d):
-            m, _ = _backtest_df(d, strategy, p, capital, symbol)
+            m, _ = _backtest_df(d, strategy, p, capital, symbol,
+                                slippage_pips, spread_pips)
             return m
         return fn
 
-    _ = rp
     res = run_stress_test(df=df, strategy_fn=strat_fn(params))
     return _clean({
         "verdict": res.get("verdict"), "worst_scenario": res.get("worst_scenario"),
@@ -217,7 +235,9 @@ def stress(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
 @mcp.tool()
 def significance(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
                  params_json: str = "{}", capital: float = 10000.0,
-                 n_trials: int = 5, source: str = "auto") -> dict:
+                 n_trials: int = 5, source: str = "auto",
+                 slippage_pips: float = 0.3,
+                 spread_pips: float | None = None) -> dict:
     """Statistical significance: A/B t-test + Mann-Whitney + PSR + Deflated
     Sharpe (multiple-testing corrected). Fast."""
     from analysis.stat_tests import compare_strategies
@@ -225,7 +245,8 @@ def significance(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = 
         probabilistic_sharpe_ratio, deflated_sharpe_ratio)
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
-    metrics, trades = _backtest_df(df, strategy, params, capital, symbol)
+    metrics, trades = _backtest_df(df, strategy, params, capital, symbol,
+                                   slippage_pips, spread_pips)
     pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
                     if c in trades.columns), None)
     if pnl_col is None or len(trades) < 10:
@@ -251,7 +272,9 @@ def significance(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = 
 @mcp.tool()
 def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
                   params_json: str = "{}", capital: float = 10000.0,
-                  source: str = "auto", auto_iterate: int = 0) -> dict:
+                  source: str = "auto", auto_iterate: int = 0,
+                  tick_mode: str = "off", slippage_pips: float = 0.3,
+                  spread_pips: float | None = None, leverage: float = 30.0) -> dict:
     """Run the entire 8-stage chain. VERY SLOW (1-3 min). Returns the
     consolidated report (same artifact as run_pipeline.py)."""
     import argparse
@@ -262,6 +285,8 @@ def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str =
         capital=capital, source=source, duka_days=90, min_grade="C", force=True,
         wf_train=4, wf_test=1, wf_anchored=True, auto_iterate=auto_iterate,
         skip_stress=False, skip_sensitivity=False, skip_significance=False,
+        tick_mode=tick_mode, slippage_pips=slippage_pips, spread_pips=spread_pips,
+        commission_pips=0.7, leverage=leverage,
         list_data=False)
     code = rp.run_pipeline(args)
     reports = sorted(Path("output/reports").glob("pipeline_*.json"),
@@ -281,7 +306,9 @@ def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str =
 @mcp.tool()
 def screen_universe(strategies_json: str = '[{"name": "adx", "params": {}}]',
                     symbols_json: str | None = None, timeframe: str = "H1",
-                    criterion: str = "composite", jobs: int = 1) -> dict:
+                    criterion: str = "composite", jobs: int = 1,
+                    slippage_pips: float = 0.3,
+                    spread_pips: float | None = None) -> dict:
     """Strategy x symbol matrix: which ticker fits which strategy. SLOW
     (~10-60s depending on universe). Returns best_per_strategy and
     best_per_symbol tables."""
@@ -289,14 +316,18 @@ def screen_universe(strategies_json: str = '[{"name": "adx", "params": {}}]',
     strategies = json.loads(strategies_json)
     symbols = json.loads(symbols_json) if symbols_json else discover_symbols(timeframe)
     rep = screen(strategies, symbols=symbols, timeframe=timeframe,
-                 criterion=criterion, jobs=jobs, verbose=False)
+                 criterion=criterion, jobs=jobs, verbose=False,
+                 exec_cfg={"slippage_pips": slippage_pips,
+                           **({"spread_pips": spread_pips} if spread_pips is not None else {})})
     return _clean(rep.to_dict())
 
 
 @mcp.tool()
 def study_criterion(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
                     grid_json: str = "{}", criteria_json: str | None = None,
-                    capital: float = 10000.0, source: str = "auto") -> dict:
+                    capital: float = 10000.0, source: str = "auto",
+                    slippage_pips: float = 0.3,
+                    spread_pips: float | None = None) -> dict:
     """Which selection criterion picks OOS winners? SLOW (~30-60s). Returns
     criteria ranked by top-1 regret (lower is better) with rank correlations."""
     from analysis.criterion_study import study_criteria
@@ -308,7 +339,8 @@ def study_criterion(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str
         return {"error": "empty param grid (pass a list of param dicts)"}
 
     def run_bt(params, d):
-        m, _ = _backtest_df(d, strategy, params, capital, symbol)
+        m, _ = _backtest_df(d, strategy, params, capital, symbol,
+                            slippage_pips, spread_pips)
         return m
 
     rep = study_criteria(df, run_bt, grid,
@@ -321,7 +353,8 @@ def study_criterion(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str
 def fine_tune(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
               space_json: str = "{}",
               n_trials: int = 20, seed: int = 7, capital: float = 10000.0,
-              source: str = "auto") -> dict:
+              source: str = "auto", slippage_pips: float = 0.3,
+              spread_pips: float | None = None) -> dict:
     """Optuna TPE parameter search with honest train/test reporting. SLOW
     (~20-120s). Returns best params + train/test Sharpe + overfit gap."""
     from analysis.fine_tuner import fine_tune as _tune
@@ -330,7 +363,8 @@ def fine_tune(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "ad
     space = {k: tuple(v) for k, v in space.items()}
 
     def run_bt(params, d):
-        m, t = _backtest_df(d, strategy, params, capital, symbol)
+        m, t = _backtest_df(d, strategy, params, capital, symbol,
+                            slippage_pips, spread_pips)
         m = dict(m)
         m["trades"] = len(t)
         return m

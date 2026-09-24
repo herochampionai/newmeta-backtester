@@ -180,6 +180,11 @@ class MultiCurrencyPortfolio:
         and equity from the equity curve. This handles the common case where
         the user just wants portfolio-level metrics from a backtest result
         without manually adding every closed trade as a Position.
+
+        Known limitation (by design, conservative): VaR/CVaR scale a
+        per-trade return quantile by the absolute total PnL, which overstates
+        tail loss versus a proper equity-curve VaR. Treat VaR here as a
+        pessimistic bound, not a calibrated risk number.
         """
         m = PortfolioMetrics(base_currency=self.base_currency)
         m.n_positions = len(self.positions)
