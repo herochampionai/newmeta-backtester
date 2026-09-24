@@ -230,13 +230,28 @@ def analyze_stale(df: pd.DataFrame) -> StaleReport:
     )
 
 
-def analyze_volume(df: pd.DataFrame) -> VolumeProfile:
+def _looks_like_fx_spot(symbol: str) -> bool:
+    """Heuristic: FX spot pairs (EURUSD, GBPJPY, EUR/USD) have no centralized volume."""
+    s = (symbol or "").upper().replace("/", "").replace("-", "").replace("_", "")
+    if len(s) == 6 and s.isalpha():
+        return True
+    for ccy in ("USD", "EUR", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD", "XAU", "XAG"):
+        if s.startswith(ccy) or s.endswith(ccy):
+            return True
+    return False
+
+
+def analyze_volume(df: pd.DataFrame, symbol: str = "") -> VolumeProfile:
     """Analyze volume profile by session and hour."""
     if df is None or len(df) == 0 or "volume" not in df.columns:
         return VolumeProfile({}, {}, 0.0, "unknown")
 
     vol = df["volume"].astype(float)
     if vol.sum() == 0:
+        # FX spot has no centralized volume feed — flag it, don't tank the grade.
+        # Equities/futures with zero volume IS suspicious (data error).
+        if _looks_like_fx_spot(symbol):
+            return VolumeProfile({}, {}, 0.0, "no_volume_data")
         return VolumeProfile({}, {}, 0.0, "zero_volume")
 
     # By session
@@ -382,6 +397,9 @@ def compute_grade(report: DataQualityReport) -> tuple[str, float]:
     if report.volume.severity == "zero_volume":
         score -= 25
         flags.append("zero_volume")
+    elif report.volume.severity == "no_volume_data":
+        score -= 5
+        flags.append("no_volume_data_fx_spot")
     elif report.volume.severity == "high":
         score -= 10
         flags.append("volume_concentrated")
@@ -452,7 +470,7 @@ def analyze_data_quality(
     gaps = analyze_gaps(df)
     outliers = analyze_outliers(df)
     stale = analyze_stale(df)
-    volume = analyze_volume(df)
+    volume = analyze_volume(df, symbol)
     spread = analyze_spread(df, pip_size)
 
     bars = len(df)
