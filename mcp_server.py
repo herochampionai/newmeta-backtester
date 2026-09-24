@@ -373,5 +373,56 @@ def fine_tune(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "ad
     return _clean(rep.to_dict())
 
 
+@mcp.tool()
+def permutation(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+                params_json: str = "{}", n_permutations: int = 2000,
+                capital: float = 10000.0, source: str = "auto",
+                slippage_pips: float = 0.3,
+                spread_pips: float | None = None) -> dict:
+    """Is this Sharpe luck? Reshuffles trades, counts how often noise wins.
+    Fast (seconds)."""
+    from analysis.permutation_test import permutation_pvalue
+    params = _parse_params(params_json)
+    df = _load(symbol, timeframe, source)
+    metrics, trades = _backtest_df(df, strategy, params, capital, symbol,
+                                   slippage_pips, spread_pips)
+    pnl_col = next((c for c in ("pnl", "PnL", "profit", "Profit", "net_pnl")
+                    if c in trades.columns), None)
+    if pnl_col is None or len(trades) < 10:
+        return {"error": f"need >=10 trades with PnL (have {len(trades)})"}
+    rep = permutation_pvalue(trades[pnl_col].values.astype(float),
+                             n_permutations=n_permutations, verbose=False)
+    return _clean(rep.to_dict())
+
+
+@mcp.tool()
+def review_gate(backtest_json: str, wf_verdict: str = "UNKNOWN",
+                wf_passed: int = 0, wf_windows: int = 0,
+                psr_verdict: str = "UNKNOWN", dsr_verdict: str = "UNKNOWN",
+                stress_verdict: str = "UNKNOWN", trades: int = 0) -> dict:
+    """Independent PASS/FAIL before paper. backtest_json: {net_pnl, sharpe,
+    max_drawdown}. Returns pass flag with named reasons. Instant."""
+    from analysis.review_gate import review
+    metrics = json.loads(backtest_json) if isinstance(backtest_json, str) else backtest_json
+    return _clean(review(backtest_metrics=metrics, wf_verdict=wf_verdict,
+                         wf_passed=wf_passed, wf_windows=wf_windows,
+                         psr_verdict=psr_verdict, dsr_verdict=dsr_verdict,
+                         stress_verdict=stress_verdict, trades=trades))
+
+
+@mcp.tool()
+def competition(focus: str = "all") -> dict:
+    """Scored Newmeta/LEAN/MT5 matrix + gaps. focus: all|leads|gaps|code.
+    Instant — no data needed."""
+    from analysis import competition_study as cs
+    if focus == "leads":
+        return {"our_leads": cs.our_leads(), "matrix": cs.matrix()}
+    if focus == "gaps":
+        return {"gaps": cs.gaps()}
+    if focus == "code":
+        return {"code_closable": cs.code_closable()}
+    return {"matrix": cs.matrix(), "our_leads": cs.our_leads(), "gaps": cs.gaps()}
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

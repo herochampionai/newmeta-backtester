@@ -32,7 +32,7 @@ DEFAULTS = {
     "min_sharpe": 0.3,
     "min_wf_pass_ratio": 0.5,
     "max_dd": 0.25,
-    "accept_wf_verdicts": ("ACCEPT",),
+    "accept_wf_verdicts": ("ACCEPT", "ROBUST"),
     "accept_psr_verdicts": ("STRONG",),
     "accept_dsr_verdicts": ("STRONG",),
     "forbid_stress_verdicts": ("FRAGILE",),

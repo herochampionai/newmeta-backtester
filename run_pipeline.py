@@ -488,7 +488,7 @@ def run_pipeline(args) -> int:
             param_spec=param_spec, criterion_fn=criterion_fn,
             train_months=args.wf_train, test_months=args.wf_test,
             roll_months=1, n_trials=5,
-            anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200,
+            anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200, embargo_bars=args.wf_embargo,
         )
         print(f"  Windows: {len(wf.windows)}, passed: {wf.passed_count}, failed: {wf.failed_count}")
         print(f"  Verdict: {wf.overall_verdict}  ({time.time()-t0:.1f}s)")
@@ -503,8 +503,9 @@ def run_pipeline(args) -> int:
         report["stages"]["walkforward"] = {"skipped": "no numeric params"}
 
     # ---- 4b. R024 Auto-iterate: OVERFIT -> shrink bounds -> WF again ----
+    # (ROBUST outranks ACCEPT; both stop the loop.)
     if args.auto_iterate > 0 and param_spec and wf is not None \
-            and wf.overall_verdict != "ACCEPT":
+            and wf.overall_verdict not in ("ACCEPT", "ROBUST"):
         from analysis.auto_iterate import auto_iterate
         print(f"\n[4b/8] R024 Auto-iterate (max {args.auto_iterate} refinement rounds)…")
         t_iter = time.time()
@@ -515,7 +516,7 @@ def run_pipeline(args) -> int:
                 param_spec=spec, criterion_fn=criterion_fn,
                 train_months=args.wf_train, test_months=args.wf_test,
                 roll_months=1, n_trials=5,
-                anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200,
+                anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200, embargo_bars=args.wf_embargo,
             )
             wins = list(rw.windows or [])
             pool = [w for w in wins if w.passed] or wins
@@ -614,6 +615,12 @@ def run_pipeline(args) -> int:
               f"p={t.get('p_value', 0):.4f}, d={t.get('cohens_d', 0):.3f}")
         print(f"    mann-whitney: U={mw.get('u_statistic', 0):.1f}, "
               f"p={mw.get('p_value', 0):.4f}")
+        # Permutation significance: is THIS Sharpe distinguishable from noise?
+        # (shuffles trade order; null = no timing skill). Complements PBO.
+        from analysis.permutation_test import permutation_pvalue
+        perm = permutation_pvalue(returns, n_permutations=2000, verbose=False)
+        print(f"  Permutation p={perm.p_value:.4f} [{perm.verdict()}] "
+              f"(obs Sharpe={perm.observed_sharpe:.3f})")
         # IMP-3: PSR/DSR correct the backtest Sharpe for multiple testing.
         # n_trials = configs actually evaluated (WF windows × trials), min 1.
         n_t = max(1, wf_n_trials)
@@ -628,6 +635,8 @@ def run_pipeline(args) -> int:
         report["stages"]["significance"] = {
             "ab_verdict": v.get("verdict"), "t_p": t.get("p_value"),
             "cohens_d": t.get("cohens_d"),
+            "permutation_p": perm.p_value,
+            "permutation_verdict": perm.verdict(),
             "psr": psr.get("psr"), "psr_verdict": psr.get("verdict"),
             "dsr": dsr.get("dsr"), "dsr_verdict": dsr.get("verdict"),
             "n_trials": n_t,
@@ -792,6 +801,9 @@ Examples:
     parser.add_argument("--wf-train", type=int, default=4, help="WF train window (months)")
     parser.add_argument("--wf-test", type=int, default=1, help="WF test window (months)")
     parser.add_argument("--wf-anchored", action="store_true", default=True, help="Anchored WF")
+    parser.add_argument("--wf-embargo", type=int, default=24,
+                        help="Bars dropped from both sides of each WF train/test "
+                             "boundary (leakage guard; 0 = off)")
     parser.add_argument("--auto-iterate", type=int, default=0, metavar="N",
                         help="R024: if WF verdict != ACCEPT, run up to N refinement rounds "
                              "and adopt the best OOS params (0 = off)")

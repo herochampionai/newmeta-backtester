@@ -129,6 +129,7 @@ class ScreenReport:
     rows: list = field(default_factory=list)
     best_per_strategy: dict = field(default_factory=dict)
     best_per_symbol: dict = field(default_factory=dict)
+    rejected_symbols: dict = field(default_factory=dict)
     elapsed_sec: float = 0.0
 
     def to_dict(self) -> dict:
@@ -159,18 +160,49 @@ def _score_row(row: dict, criterion: str) -> float:
 def screen(strategies: list[dict], symbols: list[str] | None = None,
            timeframe: str = "H1", capital: float = 10000.0,
            criterion: str = "composite", exec_cfg: dict | None = None,
-           jobs: int = 1, min_bars: int = 200, verbose: bool = True) -> ScreenReport:
+           jobs: int = 1, min_bars: int = 200, verbose: bool = True,
+           min_avg_volume: float = 0.0, max_avg_spread_pips: float | None = None,
+           pip_size: float = 0.0001) -> ScreenReport:
     """Run the matrix. Parallel workers with serial fallback.
 
     strategies: [{"name": "adx", "params": {...}}, ...]
     symbols: None = auto-discover cached symbols for the timeframe.
     exec_cfg: forwarded to run_full (spread_pips/slippage_pips/tick_mode/...).
+    Tradability universe filters (LEAN-style selection discipline):
+      min_avg_volume: skip symbols averaging less bar volume (0 = off).
+      max_avg_spread_pips: skip symbols wider than this (needs spread_pips
+        column; None = off). Rejected symbols are reported, not hidden.
     """
     import concurrent.futures
     t0 = time.time()
     if symbols is None:
         symbols = discover_symbols(timeframe)
     exec_cfg = exec_cfg or {}
+    # Tradability pre-filter: measure each symbol once, reject thin/wide
+    # markets up front (reported in rejected_symbols, never silent).
+    rejected_symbols: dict[str, str] = {}
+    if min_avg_volume > 0 or max_avg_spread_pips is not None:
+        kept = []
+        for sym in symbols:
+            df0 = _load_cached(sym, timeframe, min_bars=min_bars)
+            if df0 is None:
+                rejected_symbols[sym] = "no cached data"
+                continue
+            avg_vol = float(df0["volume"].mean()) if "volume" in df0.columns else 0.0
+            if min_avg_volume > 0 and avg_vol < min_avg_volume:
+                rejected_symbols[sym] = f"avg_volume {avg_vol:.1f} < {min_avg_volume}"
+                continue
+            if max_avg_spread_pips is not None and "spread_pips" in df0.columns:
+                avg_sp = float(df0["spread_pips"].mean())
+                if avg_sp > max_avg_spread_pips:
+                    rejected_symbols[sym] = (f"avg_spread {avg_sp:.2f}p "
+                                             f"> {max_avg_spread_pips}p")
+                    continue
+            kept.append(sym)
+        symbols = kept
+        if verbose:
+            for sym, why in rejected_symbols.items():
+                print(f"  [universe] reject {sym}: {why}")
     jobspec = [(s["name"], s.get("params", {}), sym, timeframe, capital, exec_cfg, min_bars)
                for s in strategies for sym in symbols]
     rows: list[dict] = []
@@ -224,6 +256,7 @@ def screen(strategies: list[dict], symbols: list[str] | None = None,
     return ScreenReport(timeframe=timeframe, rows=rows,
                         best_per_strategy=best_per_strategy,
                         best_per_symbol=best_per_symbol,
+                        rejected_symbols=rejected_symbols,
                         elapsed_sec=round(time.time() - t0, 1))
 
 

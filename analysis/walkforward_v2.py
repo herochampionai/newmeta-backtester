@@ -214,6 +214,7 @@ def walk_forward_v2(
     anchored: bool = False,
     min_train_bars: int = 100,
     min_test_bars: int = 30,
+    embargo_bars: int = 0,
     wfe_threshold: float = 0.5,
     engine_kwargs: dict | None = None,
     seed: int = 42,
@@ -234,7 +235,10 @@ def walk_forward_v2(
         anchored: True = expanding train window from start; False = rolling fixed window
         min_train_bars: skip window if train has fewer bars
         min_test_bars: skip window if test has fewer bars
-        wfe_threshold: per-window WFE threshold (test/train ratio)
+        embargo_bars: drop N bars from the train tail AND test head of every
+            window (López de Prado embargo). Labels near the boundary leak
+            across it (indicator warmup, trade outcomes); embargo severs the
+            leak. Set ~max holding period in bars (e.g. 24 for H1).
         engine_kwargs: passed to run_full
 
     Returns:
@@ -266,6 +270,11 @@ def walk_forward_v2(
 
         df_train = df[(df.index >= tr_start) & (df.index < tr_end)]
         df_test = df[(df.index >= te_start) & (df.index < te_end)]
+
+        if embargo_bars > 0:
+            df_train = (df_train.iloc[:-embargo_bars]
+                        if len(df_train) > embargo_bars else df_train.iloc[0:0])
+            df_test = df_test.iloc[embargo_bars:]
 
         if len(df_train) < min_train_bars or len(df_test) < min_test_bars:
             continue

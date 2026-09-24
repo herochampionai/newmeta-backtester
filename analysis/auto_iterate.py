@@ -101,7 +101,7 @@ def shrink_bounds(best: dict, radius: float = 0.25) -> dict:
 
 
 def auto_iterate(df, strategy_name: str, base_params: dict, run_wf_fn,
-                 max_rounds: int = 3, target_verdict: str = "ACCEPT",
+                 max_rounds: int = 3, target_verdicts=("ACCEPT", "ROBUST"),
                  shrink_radius: float = 0.25, verbose: bool = True) -> AutoIterateReport:
     """Run the WF -> shrink -> WF loop.
 
@@ -113,7 +113,8 @@ def auto_iterate(df, strategy_name: str, base_params: dict, run_wf_fn,
             verdict, passed, failed, n_windows, best_params (dict),
             best_oos_sharpe (float). Raises on genuinely broken configs.
         max_rounds: budget. Round 0 always runs; refinements follow.
-        target_verdict: stop when reached.
+        target_verdicts: stop when the verdict is any of these
+            (ROBUST outranks ACCEPT; both stop the loop).
         shrink_radius: bound radius for rounds 1+ (round 0 uses 0.5).
         verbose: print per-round summary.
 
@@ -164,9 +165,9 @@ def auto_iterate(df, strategy_name: str, base_params: dict, run_wf_fn,
                   f"best_oos_sharpe={rnd_rec.best_oos_sharpe:.3f} "
                   f"({rnd_rec.elapsed_sec:.1f}s)")
 
-        if verdict == target_verdict:
+        if verdict in target_verdicts:
             report.accepted = True
-            report.stop_reason = f"{target_verdict} at round {rnd}"
+            report.stop_reason = f"{verdict} at round {rnd}"
             break
 
         # Stall detection: same best params with no Sharpe gain means the
