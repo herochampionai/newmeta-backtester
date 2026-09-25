@@ -59,6 +59,32 @@ def test_gate_bootstrap_leg():
     assert g["pass"]
 
 
+def test_gate_pbo_leg():
+    from analysis.review_gate import review
+    g = review(backtest_metrics={"net_pnl": 300.0, "sharpe": 0.6,
+                                 "max_drawdown": -0.04},
+               wf_verdict="ACCEPT", wf_passed=6, wf_windows=8,
+               psr_verdict="POOR", dsr_verdict="WEAK", perm_verdict="WEAK",
+               pbo_verdict="LOW", stress_verdict="ROBUST", trades=80)
+    assert g["checks"]["significance"]["pass"]
+    assert g["pass"]
+
+
+def test_pbo_report_shape():
+    from analysis.pbo import probability_of_overfitting
+    import pandas as pd
+    rng = __import__("numpy").random.default_rng(0)
+    curves = [pd.Series(10000 + c).pipe(
+        lambda s: s) for c in rng.normal(5, 20, (4, 400)).cumsum(axis=1)]
+    rep = probability_of_overfitting(
+        pd.DataFrame({"close": range(400)}),
+        lambda p: curves[p["k"]],
+        [{"k": i} for i in range(4)],
+        n_partitions=8, n_splits=20, seed=7, verbose=False)
+    assert rep.verdict() in ("LOW", "ELEVATED", "HIGH")
+    assert rep.n_trials == 4
+
+
 def test_competition_study_complete():
     from analysis import competition_study as cs
     assert len(cs.matrix()) >= 3

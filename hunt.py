@@ -46,7 +46,7 @@ def _tune_space(params: dict) -> dict:
     return space
 
 
-def main() -> int:
+def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(description="Automated edge hunt")
     ap.add_argument("--symbols", default="auto",
                     help="'auto' = discover cached, or csv list")
@@ -64,7 +64,7 @@ def main() -> int:
     ap.add_argument("--max-candidates", type=int, default=5)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--wf-embargo", type=int, default=24)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     from analysis.fine_tuner import fine_tune
     from analysis.permutation_test import permutation_pvalue

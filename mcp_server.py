@@ -86,10 +86,72 @@ def _backtest_df(df, strategy: str, params: dict, capital: float, symbol: str,
 
 
 @mcp.tool()
+def pbo(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
+        grids_json: str = '{"bars_calculate": [10, 14, 20]}',
+        capital: float = 10000.0, source: str = "auto",
+        n_partitions: int = 16, n_splits: int = 200, seed: int = 7,
+        max_configs: int = 12) -> dict:
+    """Overfitting probability of the SELECTION procedure (Bailey CSCV).
+    grids_json: {param: [values]}. LOW = selection is trustworthy.
+    Minutes (one full backtest per config)."""
+    import itertools
+    import random as _rnd
+    import run_pipeline as rp
+    from backtester.engine_full import run_full
+    from analysis.pbo import probability_of_overfitting
+    grids = _parse_params(grids_json)
+    keys = list(grids)
+    prod = list(itertools.product(*[grids[k] for k in keys]))
+    if len(prod) < 3:
+        return {"error": f"need >=3 configs, grid gives {len(prod)}"}
+    picks = [dict(zip(keys, c)) for c in
+             (prod if len(prod) <= max_configs
+              else _rnd.Random(seed).sample(prod, max_configs))]
+    df = _load(symbol, timeframe, source)
+    ex = _exec(df, symbol, 0.3, None)
+
+    def _eq(p):
+        strat = rp._make_strategy(strategy, p)
+        sig = strat.generate(df)
+        return run_full(df, {strategy: rp._sig_tuple(sig)},
+                        init_cash=capital, strict_data=False, **ex).get("equity")
+    rep = probability_of_overfitting(df, _eq, picks,
+                                     n_partitions=n_partitions,
+                                     n_splits=n_splits, seed=seed, verbose=False)
+    return _clean(rep.to_dict())
+
+
+@mcp.tool()
+def hunt(symbols: str = "auto", strategies: str = 'adx:{"bars_calculate": 14}',
+         timeframe: str = "H1", min_sharpe: float = 0.3,
+         tune: int = 20, max_candidates: int = 5, seed: int = 7) -> dict:
+    """Full edge hunt: screen -> tune -> embargoed WF -> gate. Returns ONLY
+    walk-forward survivors (ACCEPT/ROBUST). Empty survivors = no trade.
+    Minutes. Strategies use | separator (JSON contains commas)."""
+    import hunt as hunt_mod
+    import json as _json
+    from pathlib import Path as _Path
+    import glob as _glob
+    import os as _os
+    before = set(_glob.glob("output/reports/hunt_*.json"))
+    rc = hunt_mod.main(["--symbols", symbols, "--strategies", strategies,
+                        "--timeframe", timeframe, "--min-sharpe", str(min_sharpe),
+                        "--tune", str(tune),
+                        "--max-candidates", str(max_candidates),
+                        "--seed", str(seed)])
+    after = [p for p in _glob.glob("output/reports/hunt_*.json") if p not in before]
+    if not after:
+        return {"returncode": rc, "survivors": [], "note": "no report written"}
+    latest = max(after, key=_os.path.getmtime)
+    return _clean({"returncode": rc, **_json.loads(_Path(latest).read_text())})
+
+
+@mcp.tool()
 def backtest(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
              params_json: str = "{}", capital: float = 10000.0,
              source: str = "auto", slippage_pips: float = 0.3,
              spread_pips: float | None = None) -> dict:
+    """Run a backtest. Returns net PnL, Sharpe, max drawdown, trades, win rate. Fast (seconds on cached data)."""
     """Run a backtest. Returns net PnL, Sharpe, max drawdown, trades, win rate. Fast (seconds on cached data)."""
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
@@ -399,7 +461,7 @@ def permutation(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "
 def review_gate(backtest_json: str, wf_verdict: str = "UNKNOWN",
                 wf_passed: int = 0, wf_windows: int = 0,
                 psr_verdict: str = "UNKNOWN", dsr_verdict: str = "UNKNOWN",
-                perm_verdict: str = "UNKNOWN",
+                perm_verdict: str = "UNKNOWN", pbo_verdict: str = "UNKNOWN",
                 stress_verdict: str = "UNKNOWN", trades: int = 0) -> dict:
     """Independent PASS/FAIL before paper. backtest_json: {net_pnl, sharpe,
     max_drawdown}. Returns pass flag with named reasons. Instant."""
@@ -408,7 +470,7 @@ def review_gate(backtest_json: str, wf_verdict: str = "UNKNOWN",
     return _clean(review(backtest_metrics=metrics, wf_verdict=wf_verdict,
                          wf_passed=wf_passed, wf_windows=wf_windows,
                          psr_verdict=psr_verdict, dsr_verdict=dsr_verdict,
-                         perm_verdict=perm_verdict,
+                         perm_verdict=perm_verdict, pbo_verdict=pbo_verdict,
                          stress_verdict=stress_verdict, trades=trades))
 
 

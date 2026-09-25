@@ -655,6 +655,32 @@ def run_pipeline(args) -> int:
         _fmt = lambda x: f"{x:.3f}" if x is not None else "n/a"
         print(f"  PSR(SR>{0}, {n_t} trials): {_fmt(psr.get('psr'))} [{psr.get('verdict', 'n/a')}]")
         print(f"  DSR({n_t} trials): {_fmt(dsr.get('dsr'))} [{dsr.get('verdict', 'n/a')}]")
+        # PBO: overfitting probability of the SELECTION procedure itself
+        # (Bailey et al). Needs >=3 configs: seeded sample of the WF spec
+        # product, capped at 12 full backtests for cost control.
+        import itertools as _it
+        import random as _rnd
+        pbo_verdict, pbo_value = "UNKNOWN", None
+        _keys = list(param_spec or {})
+        _vals = [param_spec[k] if isinstance(param_spec.get(k), list)
+                 else [param_spec.get(k)] for k in _keys]
+        _prod = list(_it.product(*_vals)) if _keys else []
+        if len(_prod) >= 3:
+            _picks = [dict(zip(_keys, c)) for c in
+                      (_prod if len(_prod) <= 12
+                       else _rnd.Random(seed).sample(_prod, 12))]
+            from analysis.pbo import probability_of_overfitting
+            try:
+                _pbo = probability_of_overfitting(
+                    df, lambda p: run_bt(p)[2], _picks,
+                    n_partitions=16, n_splits=200, seed=seed, verbose=False)
+                pbo_verdict, pbo_value = _pbo.verdict(), round(_pbo.pbo, 3)
+                print(f"  PBO={pbo_value:.3f} [{pbo_verdict}] "
+                      f"({_pbo.n_trials} configs, {_pbo.n_splits} splits)")
+            except Exception as e:
+                print(f"  PBO skipped: {type(e).__name__}: {str(e)[:100]}")
+        else:
+            print("  PBO skipped: need >=3 spec configs")
         report["stages"]["significance"] = {
             "ab_verdict": v.get("verdict"), "t_p": t.get("p_value"),
             "cohens_d": t.get("cohens_d"),
@@ -662,6 +688,7 @@ def run_pipeline(args) -> int:
             "permutation_verdict": perm.verdict(),
             "psr": psr.get("psr"), "psr_verdict": psr.get("verdict"),
             "dsr": dsr.get("dsr"), "dsr_verdict": dsr.get("verdict"),
+            "pbo": pbo_value, "pbo_verdict": pbo_verdict,
             "n_trials": n_t,
         }
     else:
@@ -764,6 +791,7 @@ def run_pipeline(args) -> int:
         psr_verdict=_sg.get("psr_verdict", "UNKNOWN"),
         dsr_verdict=_sg.get("dsr_verdict", "UNKNOWN"),
         perm_verdict=_sg.get("permutation_verdict", "UNKNOWN"),
+        pbo_verdict=_sg.get("pbo_verdict", "UNKNOWN"),
         stress_verdict=_st.get("verdict", "UNKNOWN"),
         trades=len(trades))
     print(f"  Gate: {'PASS' if _gate['pass'] else 'FAIL'} ({_gate['summary']})")

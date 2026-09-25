@@ -11,7 +11,7 @@ Checks (defaults):
   sharpe_floor    sharpe >= min_sharpe (0.3)
   walkforward     verdict == ACCEPT, or pass_ratio >= min_wf_pass_ratio (0.5)
   significance    PSR verdict STRONG or DSR verdict STRONG or bootstrap
-                    verdict STRONG (*)
+                    verdict STRONG or PBO verdict LOW (*)
   stress          verdict != FRAGILE
   drawdown_cap    |max_drawdown| <= max_dd (0.25)
 
@@ -36,6 +36,7 @@ DEFAULTS = {
     "accept_psr_verdicts": ("STRONG",),
     "accept_dsr_verdicts": ("STRONG",),
     "accept_perm_verdicts": ("STRONG",),
+    "accept_pbo_verdicts": ("LOW",),
     "forbid_stress_verdicts": ("FRAGILE",),
 }
 
@@ -43,7 +44,7 @@ DEFAULTS = {
 def review(backtest_metrics: dict | None = None, wf_verdict: str = "UNKNOWN",
            wf_passed: int = 0, wf_windows: int = 0,
            psr_verdict: str = "UNKNOWN", dsr_verdict: str = "UNKNOWN",
-           perm_verdict: str = "UNKNOWN",
+           perm_verdict: str = "UNKNOWN", pbo_verdict: str = "UNKNOWN",
            stress_verdict: str = "UNKNOWN", trades: int = 0,
            **overrides) -> dict:
     """Evaluate all checks. Returns {pass, reasons, checks}."""
@@ -72,9 +73,10 @@ def review(backtest_metrics: dict | None = None, wf_verdict: str = "UNKNOWN",
 
     sig_ok = (psr_verdict in cfg["accept_psr_verdicts"]
               or dsr_verdict in cfg["accept_dsr_verdicts"]
-              or perm_verdict in cfg["accept_perm_verdicts"])
+              or perm_verdict in cfg["accept_perm_verdicts"]
+              or pbo_verdict in cfg["accept_pbo_verdicts"])
     _add("significance", sig_ok,
-         f"PSR={psr_verdict} DSR={dsr_verdict} BOOT={perm_verdict}")
+         f"PSR={psr_verdict} DSR={dsr_verdict} BOOT={perm_verdict} PBO={pbo_verdict}")
 
     _add("stress", stress_verdict not in cfg["forbid_stress_verdicts"],
          f"stress={stress_verdict}")
@@ -130,4 +132,14 @@ if __name__ == "__main__":
     assert boot_only["checks"]["significance"]["pass"], boot_only["checks"]
     assert boot_only["pass"], boot_only["reasons"]
     print("bootstrap-only significance accepted")
+
+    # PBO-only evidence carries the significance leg too.
+    pbo_only = review(
+        backtest_metrics={"net_pnl": 300.0, "sharpe": 0.6, "max_drawdown": -0.04},
+        wf_verdict="ACCEPT", wf_passed=6, wf_windows=8,
+        psr_verdict="POOR", dsr_verdict="WEAK", perm_verdict="WEAK",
+        pbo_verdict="LOW", stress_verdict="ROBUST", trades=80)
+    assert pbo_only["checks"]["significance"]["pass"], pbo_only["checks"]
+    assert pbo_only["pass"], pbo_only["reasons"]
+    print("pbo-only significance accepted")
     print("SELF-TEST PASS")
