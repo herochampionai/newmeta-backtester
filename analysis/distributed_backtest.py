@@ -19,6 +19,8 @@ import json
 import traceback
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
+# (CPython names it BrokenProcessPool, not *Error.)
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Any
@@ -60,6 +62,7 @@ class RunSummary:
     throughput_per_sec: float
     results: list[JobResult]
     failed_jobs: list[BacktestJob] = field(default_factory=list)
+    fallback_serial: bool = False  # True when the pool died and jobs ran serially
 
 
 def _safe_call(args):
@@ -135,6 +138,22 @@ class DistributedBacktest:
         all_results = []
         failed_jobs = []
         n_retried = 0
+        fallback_serial = False
+
+        def _handle_result(r: JobResult, jd: dict, idx: int,
+                           attempt: int, completed: int, total: int):
+            """Shared bookkeeping for pool and serial-fallback paths."""
+            nonlocal n_retried
+            if attempt > 0:
+                r.attempts = attempt + 1
+                if r.status == "success":
+                    n_retried += 1
+            if r.status == "failed" and attempt < self.max_retries:
+                attempt_failed.append(jd)
+            elif r.status == "failed":
+                failed_jobs.append(jobs[idx])
+            if progress_callback:
+                progress_callback(completed, total, r)
 
         # Run with retries
         pending_jobs = list(zip(job_dicts, range(len(jobs))))
@@ -146,49 +165,93 @@ class DistributedBacktest:
             attempt_results = []
             attempt_failed = []
 
-            with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
-                future_to_job = {
-                    executor.submit(_safe_call, (jd, job_fn_ref)): (jd, idx)
-                    for jd, idx in pending_jobs
-                }
+            try:
+                with ProcessPoolExecutor(max_workers=self.n_workers) as executor:
+                    future_to_job = {
+                        executor.submit(_safe_call, (jd, job_fn_ref)): (jd, idx)
+                        for jd, idx in pending_jobs
+                    }
 
-                last_heartbeat = time.time()
+                    last_heartbeat = time.time()
+                    completed = 0
+                    total = len(pending_jobs)
+                    pool_dead = False
+                    processed: set = set()
+                    broken: list = []
+
+                    for future in as_completed(future_to_job):
+                        jd, idx = future_to_job[future]
+                        try:
+                            r = future.result()
+                        except BrokenProcessPool as e:
+                            # The pool itself died (sandbox/spawn edge) — every
+                            # later future is doomed too. Stop and go serial.
+                            r = JobResult(
+                                job_id=jd["job_id"],
+                                status="failed",
+                                error=f"pool_died: {str(e)[:200]}",
+                                duration_sec=0.0,
+                            )
+                            pool_dead = True
+                            broken.append((jd, idx))
+                        except Exception as e:
+                            r = JobResult(
+                                job_id=jd["job_id"],
+                                status="failed",
+                                error=f"future_error: {type(e).__name__}: {str(e)[:200]}",
+                                duration_sec=0.0,
+                            )
+
+                        processed.add(jd["job_id"])
+                        completed += 1
+                        attempt_results.append(r)
+                        _handle_result(r, jd, idx, attempt, completed, total)
+
+                        if time.time() - last_heartbeat > self.heartbeat_sec:
+                            print(f"  [attempt {attempt+1} heartbeat] {completed}/{total} done")
+                            last_heartbeat = time.time()
+                        if pool_dead:
+                            break
+
+                    if pool_dead:
+                        fallback_serial = True
+                        print("  pool died mid-attempt — serial fallback "
+                              "for unprocessed + broken jobs")
+                        todo = ([(jd, idx) for jd, idx in pending_jobs
+                                 if jd["job_id"] not in processed] + broken)
+                        for jd, idx in todo:
+                            rs = _safe_call((jd, job_fn_ref))
+                            rs.attempts = attempt + 1
+                            attempt_results = ([x for x in attempt_results
+                                                if x.job_id != jd["job_id"]] + [rs])
+                            completed += 1
+                            if rs.status == "success":
+                                if jd in attempt_failed:
+                                    attempt_failed.remove(jd)
+                                if jobs[idx] in failed_jobs:
+                                    failed_jobs.remove(jobs[idx])
+                                if attempt > 0:
+                                    n_retried += 1
+                            elif jd not in attempt_failed and jobs[idx] not in failed_jobs:
+                                # Serial run failed too: keep retry/DLQ routing.
+                                if attempt < self.max_retries:
+                                    attempt_failed.append(jd)
+                                else:
+                                    failed_jobs.append(jobs[idx])
+                            if progress_callback:
+                                progress_callback(completed, total, rs)
+            except BrokenProcessPool:
+                # Pool failed before producing any future (submit-time death).
+                fallback_serial = True
+                print("  pool broken at submit — full serial fallback")
                 completed = 0
                 total = len(pending_jobs)
-
-                for future in as_completed(future_to_job):
-                    jd, idx = future_to_job[future]
-                    try:
-                        r = future.result()
-                    except Exception as e:
-                        r = JobResult(
-                            job_id=jd["job_id"],
-                            status="failed",
-                            error=f"future_error: {type(e).__name__}: {str(e)[:200]}",
-                            duration_sec=0.0,
-                        )
-
-                    if attempt > 0:
-                        r.attempts = attempt + 1
-                        if r.status == "success":
-                            n_retried += 1
-
+                for jd, idx in pending_jobs:
+                    r = _safe_call((jd, job_fn_ref))
+                    r.attempts = attempt + 1
                     completed += 1
                     attempt_results.append(r)
-
-                    if r.status == "failed" and attempt < self.max_retries:
-                        # Add to retry queue
-                        attempt_failed.append(jd)
-                    elif r.status == "failed":
-                        # Permanent failure → DLQ
-                        failed_jobs.append(jobs[idx])
-
-                    if progress_callback:
-                        progress_callback(completed, total, r)
-
-                    if time.time() - last_heartbeat > self.heartbeat_sec:
-                        print(f"  [attempt {attempt+1} heartbeat] {completed}/{total} done")
-                        last_heartbeat = time.time()
+                    _handle_result(r, jd, idx, attempt, completed, total)
 
             all_results.extend(attempt_results)
             pending_jobs = [(jd, idx) for jd, idx in zip(attempt_failed, [jobs.index(next(j for j in jobs if j.job_id == jd["job_id"])) for jd in attempt_failed])]
@@ -212,6 +275,7 @@ class DistributedBacktest:
             throughput_per_sec=round(throughput, 3),
             results=all_results,
             failed_jobs=failed_jobs,
+            fallback_serial=fallback_serial,
         )
 
 
@@ -227,6 +291,7 @@ def save_run_summary(summary: RunSummary, out_path: str | Path) -> str:
         "total_duration_sec": summary.total_duration_sec,
         "avg_duration_sec": summary.avg_duration_sec,
         "throughput_per_sec": summary.throughput_per_sec,
+        "fallback_serial": summary.fallback_serial,
         "results": [
             {
                 "job_id": r.job_id,

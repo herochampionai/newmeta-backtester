@@ -112,10 +112,13 @@ def fetch_ticks_dukascopy(symbol: str, start: str | None = None,
     if not symbol_dir.exists():
         return None, {"source": "dukascopy_miss", "reason": "no partitions"}
     dfs = []
+    skipped_partitions = []
     for part in sorted(symbol_dir.glob("*/ticks.parquet")):
         try:
             dfs.append(pd.read_parquet(part))
-        except Exception:
+        except Exception as e:
+            # Don't silently drop corrupt partitions — report them.
+            skipped_partitions.append(f"{part.parent.name}: {type(e).__name__}")
             continue
     if not dfs:
         return None, {"source": "dukascopy_miss", "reason": "unreadable partitions"}
@@ -136,7 +139,8 @@ def fetch_ticks_dukascopy(symbol: str, start: str | None = None,
         "flags": 0,
     }).set_index("time").sort_index()
     return out, {"source": "dukascopy_ticks", "rows": len(out),
-                 "range": (str(out.index[0]), str(out.index[-1]))}
+                 "range": (str(out.index[0]), str(out.index[-1])),
+                 "skipped_partitions": skipped_partitions}
 
 
 def fetch_ticks_with_priority(symbol: str, start: str, end: str | None = None,

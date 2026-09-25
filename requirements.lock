@@ -1,0 +1,20 @@
+# Frozen known-good set — Python 3.11, verified by `python -m tests` (16/16).
+# Install: pip install -r requirements.lock   (CI uses this, not requirements.txt)
+# requirements.txt remains the human-editable compatibility floor.
+# Regenerate after intentional upgrades and re-run the full suite.
+numpy==2.4.6
+scipy==1.17.1
+scikit-learn==1.9.0
+pandas==3.0.5
+optuna==5.0.0
+vectorbt==1.1.0
+pyportfolioopt==1.6.0
+plotly==5.24.1
+ta==0.11.0
+yfinance==1.7.0
+pyyaml==6.0.3
+pyarrow==25.0.1
+mcp==1.29.1
+requests==2.32.5
+MetaTrader5==5.0.6162; platform_system == "Windows"
+hmmlearn>=0.3  # optional: HMM regimes (vol fallback otherwise)

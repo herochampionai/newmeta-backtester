@@ -183,6 +183,7 @@ def deep_backtest(df: pd.DataFrame,
         equity = pd.Series(10000.0, index=df.index, dtype=float)
         cash = 10000.0
         rejected_entries = 0
+        bars_per_day_fallbacks = 0
         atr_pips = float((df["high"] - df["low"]).abs().mean() / pip_size) if pip_size else 20.0
         for strat_name, (entries_arr, exits_arr, direction_arr) in sig_arrays.items():
             position = 0
@@ -281,7 +282,9 @@ def deep_backtest(df: pd.DataFrame,
                             _med = float(pd.Series(df.index).diff().dropna().dt.total_seconds().median())
                             bars_per_day = max(86400.0 / _med, 1.0)
                         except Exception:
-                            pass
+                            # Irregular index: keep the heuristic default, but
+                            # count it — silent time-base errors skew borrow fees.
+                            bars_per_day_fallbacks += 1
                         cash -= abs(entry_lot * contract_size * mtm_px) * float(borrow_pct_per_day) / 100.0 / bars_per_day
                     mtm = (mtm_px - entry_price) * position * contract_size * entry_lot
                     cur_eq = cash + mtm
@@ -375,6 +378,7 @@ def deep_backtest(df: pd.DataFrame,
         "fills_count": fills_count,
         "intra_bar_fills_estimate": intra_bar_fills,
         "rejected_entries": int(locals().get("rejected_entries", 0)),
+        "bars_per_day_fallbacks": int(locals().get("bars_per_day_fallbacks", 0)),
         "min_margin_level": float(locals().get("_min_lvl", 9999.0)) if "grid_mode" in locals() and grid_mode == GRID_NONE else None,
         "leverage": float(leverage),
         "borrow_pct_per_day": float(borrow_pct_per_day),

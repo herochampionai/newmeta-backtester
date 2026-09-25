@@ -435,6 +435,7 @@ def run_full(df: pd.DataFrame,
         "borrow_pct_per_day": float(borrow_pct_per_day),
         "stopout_level_pct": float(stopout_level_pct),
         "strict_data": bool(strict_data),
+        "spec_fallback": bool(locals().get("_spec_fallback", False)),
     }
 
     # Attach data quality report
@@ -446,6 +447,7 @@ def run_full(df: pd.DataFrame,
         result = apply_adaptive(result, adaptive_config=adaptive_config, base_lot=base_lot)
 
     # Stage 3: swap overlay (opt-in) — broker-true spec wins over manual pips
+    _spec_fallback = False
     if swap_enabled:
         _spec = spec
         if _spec is None:
@@ -455,7 +457,9 @@ def run_full(df: pd.DataFrame,
                 pip_size = float(getattr(_spec, "pip_size", pip_size))
                 contract_size = float(getattr(_spec, "contract_size", contract_size))
             except Exception:
+                # Spec DB missing/unreadable: manual pips stand in, flagged.
                 _spec = None
+                _spec_fallback = True
         result = apply_swap(result, df,
                             long_swap_pips=long_swap_pips,
                             short_swap_pips=short_swap_pips,

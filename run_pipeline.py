@@ -342,6 +342,12 @@ def run_pipeline(args) -> int:
         log_path=f"output/logs/pipeline_{run_ts}.jsonl",
         console=False,
     )
+    # Reproducibility: one seed for every stochastic stage (tuner, WF,
+    # Sobol, bootstrap). Recorded in report["repro"] with the data
+    # fingerprint so reruns are provably comparable.
+    from backtester.repro import resolve_seed, set_global_seed, data_fingerprint
+    seed = set_global_seed(resolve_seed(getattr(args, "seed", None)))
+    print(f"Seed: {seed} (override with --seed or NEWMETA_SEED)")
     # Consolidated report artifact (IMP-2): every stage records here,
     # written to output/reports/pipeline_<ts>.json at the end.
     report: dict = {
@@ -368,6 +374,11 @@ def run_pipeline(args) -> int:
         return 1
     registry.counter("data_loaded_total", labels={"symbol": args.symbol}).inc()
     registry.gauge("data_bars").set(len(df))
+    report["repro"] = {
+        "seed": seed,
+        "data": data_fingerprint(df, args.symbol, args.timeframe, args.source),
+        "cli": {k: v for k, v in vars(args).items()},
+    }
 
     # ---- 2. Data quality ----
     print("\n[2/8] R011 Data Quality…")
@@ -425,7 +436,7 @@ def run_pipeline(args) -> int:
 
         if _space:
             tune_rep = fine_tune(df, _run_bt_slice, _space, n_trials=args.tune,
-                                 n_jobs=args.tune_jobs, verbose=True)
+                                 n_jobs=args.tune_jobs, seed=seed, verbose=True)
             report["stages"]["tune"] = tune_rep.to_dict()
             if tune_rep.best_params:
                 print(f"  Adopting tuned params: {tune_rep.best_params} "
@@ -490,6 +501,7 @@ def run_pipeline(args) -> int:
             train_months=args.wf_train, test_months=args.wf_test,
             roll_months=1, n_trials=5,
             anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200, embargo_bars=args.wf_embargo,
+            seed=seed,
         )
         print(f"  Windows: {len(wf.windows)}, passed: {wf.passed_count}, failed: {wf.failed_count}")
         print(f"  Verdict: {wf.overall_verdict}  ({time.time()-t0:.1f}s)")
@@ -518,6 +530,7 @@ def run_pipeline(args) -> int:
                 train_months=args.wf_train, test_months=args.wf_test,
                 roll_months=1, n_trials=5,
                 anchored=args.wf_anchored, min_train_bars=500, min_test_bars=200, embargo_bars=args.wf_embargo,
+                seed=seed,
             )
             wins = list(rw.windows or [])
             pool = [w for w in wins if w.passed] or wins
@@ -578,7 +591,7 @@ def run_pipeline(args) -> int:
                               "type": "int" if isinstance(v, int) else "float"})
         if specs:
             sens = analyze_parameter_sensitivity(
-                param_specs=specs, evaluator=criterion_fn, n_samples=32)
+                param_specs=specs, evaluator=criterion_fn, n_samples=32, seed=seed)
             # Result has 'importance_ranking' with {param, total_importance} per param.
             ranking = sens.get("importance_ranking", [])
             sobol = sens.get("sobol", {})
@@ -620,7 +633,7 @@ def run_pipeline(args) -> int:
         # (bootstrap resample with replacement; H0 = true Sharpe <= 0).
         # Complements PBO.
         from analysis.permutation_test import permutation_pvalue
-        perm = permutation_pvalue(returns, n_permutations=2000, verbose=False)
+        perm = permutation_pvalue(returns, n_permutations=2000, seed=seed, verbose=False)
         print(f"  Permutation p={perm.p_value:.4f} [{perm.verdict()}] "
               f"(obs Sharpe={perm.observed_sharpe:.3f})")
         # IMP-3: PSR/DSR correct the backtest Sharpe for multiple testing.
@@ -751,6 +764,20 @@ def run_pipeline(args) -> int:
     for _r in _gate["reasons"]:
         print(f"    {_r}")
     registry.counter("review_gate", labels={"result": "pass" if _gate["pass"] else "fail"}).inc()
+    # P3: a FAIL must be unmissable — gauge + AlertManager rule, fired
+    # alerts print here and land in the report artifact.
+    from backtester.observability import AlertManager
+    registry.gauge("review_gate_pass").set(1.0 if _gate["pass"] else 0.0)
+    _alerts = AlertManager()
+    _alerts.add_rule("review-gate-fail",
+                     lambda r: r.gauge("review_gate_pass").value() == 0.0,
+                     "warning", f"review gate FAILED ({_gate['summary']})",
+                     cooldown_sec=0.0)
+    _fired = _alerts.check(registry)
+    for _a in _fired:
+        print(f"  ALERT [{_a.severity}]: {_a.message}")
+    _gate["alerts"] = [{"rule": a.rule_name, "severity": a.severity,
+                        "message": a.message} for a in _fired]
     report["stages"]["gate"] = _gate
     report["elapsed_sec"] = round(time.time() - start_time, 1)
 
@@ -831,6 +858,9 @@ Examples:
     parser.add_argument("--skip-sensitivity", action="store_true")
     parser.add_argument("--skip-significance", action="store_true")
     parser.add_argument("--list-data", action="store_true", help="Show cached datasets and exit")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Global RNG seed (default: NEWMETA_SEED env or 7); "
+                             "flows into tuner, WF, Sobol, bootstrap and is recorded in the report")
 
     args = parser.parse_args()
 
