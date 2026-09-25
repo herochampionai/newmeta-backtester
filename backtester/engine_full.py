@@ -251,6 +251,7 @@ def run_full(df: pd.DataFrame,
                borrow_pct_per_day: float = 0.0,
                stopout_level_pct: float = 50.0,
                strict_data: bool = False,
+               require_real_ticks: bool = False,
                ) -> dict:
     """Run backtest with optional overlays.
 
@@ -329,6 +330,7 @@ def run_full(df: pd.DataFrame,
             leverage=leverage,
             borrow_pct_per_day=borrow_pct_per_day,
             stopout_level_pct=stopout_level_pct,
+            require_real_ticks=require_real_ticks,
         )
         # Deep_backtest hardcodes equity start at 10000. Rescale to user's init_cash
         # so the comparison chart and metrics reflect the requested capital.

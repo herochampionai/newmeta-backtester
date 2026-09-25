@@ -195,12 +195,24 @@ def download_dukascopy_range(
     out_dir: Path | str,
     max_hours: int | None = None,
     delay_sec: float = 1.0,
+    bad_payload_retries: int = 3,
+    breaker_threshold: int = 5,
 ) -> list[DownloadResult]:
     """Download a date range of Dukascopy tick data (hourly files).
 
     A polite inter-request delay keeps us under Dukascopy's rate limiter
     (cached files skip the delay entirely).
+
+    Throttle handling (the server answers overload with HTTP 200 + an HTML
+    page, which the transport-level Retry cannot see):
+    - each bad payload is retried with exponential backoff + jitter
+      (10s, 20s, 40s, capped at 300s);
+    - after `breaker_threshold` CONSECUTIVE bad payloads the circuit opens:
+      the range stops immediately instead of hammering thousands of doomed
+      requests into an IP ban. Cached files are kept, so re-running later
+      resumes for free. The final list entry carries error="circuit_open...".
     """
+    import random
     import time as _time
 
     out_dir = Path(out_dir)
@@ -212,6 +224,10 @@ def download_dukascopy_range(
     results = []
     sess = _session_with_retries()
     hours_done = 0
+    consec_bad = 0
+
+    def _is_bad(r: DownloadResult) -> bool:
+        return (not r.ok) and ("bad payload" in (r.error or ""))
 
     current = start_dt.floor("h")
     while current < end_dt:
@@ -228,12 +244,27 @@ def download_dukascopy_range(
             symbol, current.year, current.month - 1, current.day, current.hour,
             out_dir, sess
         )
+        # App-level retry: transport Retry never fires on HTTP-200 throttle pages.
+        attempt = 0
+        while _is_bad(r) and attempt < bad_payload_retries:
+            attempt += 1
+            wait = min(10 * (2 ** (attempt - 1)), 300) * random.uniform(0.75, 1.25)
+            _time.sleep(wait)
+            r = download_dukascopy_hour(
+                symbol, current.year, current.month - 1, current.day, current.hour,
+                out_dir, sess
+            )
         results.append(r)
         hours_done += 1
-        # Bad payload = server served a throttle page with HTTP 200.
-        # Back off hard before the next request or every file after this 429s too.
-        if not r.ok and "bad payload" in (r.error or ""):
-            _time.sleep(10)
+        consec_bad = consec_bad + 1 if _is_bad(r) else 0
+        if consec_bad >= breaker_threshold:
+            results.append(DownloadResult(
+                False, symbol, "", "", 0, "",
+                f"circuit_open: {consec_bad} consecutive bad payloads — "
+                f"server is throttling; stopped at {current} instead of "
+                f"hammering into an IP ban. Cached files kept; re-run later "
+                f"to resume for free.", "dukascopy"))
+            break
         current += pd.Timedelta(hours=1)
 
     return results
@@ -646,7 +677,8 @@ def fetch_and_prepare_ticks(
     end: str,
     bi5_dir: Path | str = DEFAULT_DATA_DIR,
     parquet_dir: Path | str = DEFAULT_PARQUET_DIR,
-    corp_actions: dict | None = None
+    corp_actions: dict | None = None,
+    partition_by: str = "day"
 ) -> dict:
     """Download Dukascopy ticks, convert to parquet, validate, apply corp actions."""
     # Download

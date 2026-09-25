@@ -258,6 +258,9 @@ def _exec_kwargs(df, args) -> dict:
         "slippage_pips": args.slippage_pips,
         "spread_pips": float(spread),
         "tick_mode": args.tick_mode,
+        # "real" means real: no real ticks -> hard error, never silent
+        # synthetic fallback (use tick_mode=synthetic to allow it).
+        "require_real_ticks": (args.tick_mode == "real"),
         "pip_size": 0.01 if "JPY" in args.symbol.upper() else 0.0001,
         "symbol": args.symbol,
         "leverage": args.leverage,

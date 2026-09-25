@@ -43,8 +43,10 @@ print(f'\nCurrent NAS performance: T ${m_t["net_pnl"]:+,.0f} Sh {m_t["sharpe"]:+
 print(f'                         V ${m_v["net_pnl"]:+,.0f} Sh {m_v["sharpe"]:+.2f} WR {m_v["win_rate"]*100:.1f}% {m_v["n_trades"]}t')
 
 
-def search_variant(prior_params, n_trials=80, label='variant'):
+def search_variant(prior_params, n_trials=80, label='variant', df=None):
     """Find another ROBUST ADX variant with DIFFERENT params for NAS."""
+    if df is None:
+        df = nas_t  # module-level train split; explicit df overrides it.
     def obj(trial, df):
         params = {
             'bars_calculate': trial.suggest_int('bars', 5, 25),

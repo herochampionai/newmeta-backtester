@@ -122,7 +122,7 @@ class TripleRSIProV6Strategy(BaseStrategy):
                     ltf_med = ind.rsi(ltf["close"], med_p)
                     ltf_slow = ind.rsi(ltf["close"], slow_p)
                 # All 3 periods bullish/bearish (alignment)
-                ltf_bull = (ltf_fast > 50) & (lttf_med > 50 if False else ltf_med > 50) & (ltf_slow > 50)
+                ltf_bull = (ltf_fast > 50) & (ltf_med > 50) & (ltf_slow > 50)
                 ltf_bear = (ltf_fast < 50) & (ltf_med < 50) & (ltf_slow < 50)
                 ltf_bull = ltf_bull.reindex(df.index, method="ffill").fillna(False).astype(bool)
                 ltf_bear = ltf_bear.reindex(df.index, method="ffill").fillna(False).astype(bool)

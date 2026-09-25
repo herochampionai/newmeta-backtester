@@ -49,7 +49,8 @@ def deep_backtest(df: pd.DataFrame,
                    leverage: float = 30.0,
                    borrow_pct_per_day: float = 0.0,
                    stopout_level_pct: float = 50.0,
-                   progress_every: int = 5000) -> dict:
+                   progress_every: int = 5000,
+                   require_real_ticks: bool = False) -> dict:
     """Run backtest on tick data for higher accuracy.
 
     Args:
@@ -82,10 +83,22 @@ def deep_backtest(df: pd.DataFrame,
             symbol, tick_start, tick_end,
             prefer_ticks=True, ticks_per_bar=ticks_per_bar,
         )
-        if ticks is not None:
-            tick_source = info.get("source", "real_ticks")
+        # fetch_ticks_with_priority NEVER returns None — worst case it hands
+        # back ticks synthesized from cached bars. The honesty signal is the
+        # SOURCE, not None-ness (the old `ticks is None` check was dead code).
+        src = (info or {}).get("source", "")
+        if src in ("mt5_ticks", "dukascopy_ticks") and ticks is not None:
+            tick_source = src
+        elif require_real_ticks:
+            raise RuntimeError(
+                f"require_real_ticks=True but no real ticks for {symbol} "
+                f"{tick_start}..{tick_end} (MT5/Dukascopy unavailable; "
+                f"fetch fell back to '{src or 'unknown'}'). Refusing silent "
+                f"synthetic fallback — backfill ticks or re-run with "
+                f"tick_mode='synthetic'.")
         else:
-            ticks = synthesize_ticks_from_bars(df, ticks_per_bar=ticks_per_bar)
+            if ticks is None:
+                ticks = synthesize_ticks_from_bars(df, ticks_per_bar=ticks_per_bar)
             tick_source = "synthetic_ticks_fallback"
     else:
         ticks = synthesize_ticks_from_bars(df, ticks_per_bar=ticks_per_bar)

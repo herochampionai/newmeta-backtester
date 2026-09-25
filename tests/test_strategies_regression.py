@@ -8,8 +8,12 @@ import traceback
 from pathlib import Path
 import pandas as pd
 
-# Load real data
-df = pd.read_parquet('data/cache/EURUSD_H1_de6be23d7c3770d4.parquet')
+# Load real data (freshest EURUSD H1 cache; hash suffixes change on refetch).
+from pathlib import Path as _Path
+_candidates = sorted(_Path('data/cache').glob('EURUSD_H1*.parquet'),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+assert _candidates, 'No EURUSD_H1 cache in data/cache — run the Yahoo fetch first'
+df = pd.read_parquet(_candidates[0])
 
 # Discover all strategy files (skip base/init/indicators)
 strategies_dir = Path('strategies')
