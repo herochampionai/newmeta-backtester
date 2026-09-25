@@ -616,13 +616,15 @@ def run_pipeline(args) -> int:
         print(f"    mann-whitney: U={mw.get('u_statistic', 0):.1f}, "
               f"p={mw.get('p_value', 0):.4f}")
         # Permutation significance: is THIS Sharpe distinguishable from noise?
-        # (shuffles trade order; null = no timing skill). Complements PBO.
+        # (bootstrap resample with replacement; H0 = true Sharpe <= 0).
+        # Complements PBO.
         from analysis.permutation_test import permutation_pvalue
         perm = permutation_pvalue(returns, n_permutations=2000, verbose=False)
         print(f"  Permutation p={perm.p_value:.4f} [{perm.verdict()}] "
               f"(obs Sharpe={perm.observed_sharpe:.3f})")
         # IMP-3: PSR/DSR correct the backtest Sharpe for multiple testing.
         # n_trials = configs actually evaluated (WF windows × trials), min 1.
+        # (PSR/DSR return None for non-positive Sharpe — formatted as n/a.)
         n_t = max(1, wf_n_trials)
         obs_sr = float(metrics.get("sharpe", 0) or 0)
         rets = pd.Series(returns, dtype=float)
@@ -630,8 +632,9 @@ def run_pipeline(args) -> int:
         kurt = float(rets.kurtosis() + 3.0) if len(rets) > 3 else 3.0
         psr = probabilistic_sharpe_ratio(obs_sr, n_trials=n_t, skewness=skew, kurtosis=kurt)
         dsr = deflated_sharpe_ratio(obs_sr, n_trials=n_t, skewness=skew, kurtosis=kurt)
-        print(f"  PSR(SR>{0}, {n_t} trials): {psr.get('psr', 0):.3f} [{psr.get('verdict', 'n/a')}]")
-        print(f"  DSR({n_t} trials): {dsr.get('dsr', 0):.3f} [{dsr.get('verdict', 'n/a')}]")
+        _fmt = lambda x: f"{x:.3f}" if x is not None else "n/a"
+        print(f"  PSR(SR>{0}, {n_t} trials): {_fmt(psr.get('psr'))} [{psr.get('verdict', 'n/a')}]")
+        print(f"  DSR({n_t} trials): {_fmt(dsr.get('dsr'))} [{dsr.get('verdict', 'n/a')}]")
         report["stages"]["significance"] = {
             "ab_verdict": v.get("verdict"), "t_p": t.get("p_value"),
             "cohens_d": t.get("cohens_d"),

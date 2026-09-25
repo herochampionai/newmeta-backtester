@@ -55,4 +55,5 @@ config/local_*.yaml
 
 data/ticks_raw/
 data/ticks_parquet/
+data/ticks/
 
