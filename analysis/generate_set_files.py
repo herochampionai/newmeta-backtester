@@ -9,7 +9,9 @@ For multi-instance deployment, the user attaches TwelveStrategies.mq5 on
 multiple charts (e.g., EURUSD H1 + NAS100 H1), each loading its own .set file.
 """
 from __future__ import annotations
+
 import sys
+
 sys.path.insert(0, '.')
 import json
 from pathlib import Path
@@ -213,7 +215,7 @@ RECOMMENDED INSTANCES (independent, each runs alone):
         })
     with open("output/DEPLOYMENT_MANIFEST.json", "w") as f:
         json.dump(manifest, f, indent=2)
-    print(f"\n  Saved → output/DEPLOYMENT_MANIFEST.json")
+    print("\n  Saved → output/DEPLOYMENT_MANIFEST.json")
 
 
 if __name__ == "__main__":

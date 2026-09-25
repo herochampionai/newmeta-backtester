@@ -6,14 +6,14 @@
 - Auto-generates corrected .set + patch notes
 """
 from __future__ import annotations
+
 import re
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
-from backtester.parity import strict_parity_test
+from backtester.broker_cost import get_broker
 from backtester.symbol_spec import get_spec
-from backtester.broker_cost import get_broker, cost_per_trade
 from data.live_fetcher import fetch_with_priority
 from strategies import STRATEGY_REGISTRY
 
@@ -198,5 +198,6 @@ def full_mq5_audit(mq5_path: str | Path, symbol: str, timeframe: str,
 
 # Import here to avoid circular
 import pandas as pd
+
 from backtester.engine_full import run_full
 from backtester.parity import fetch_mt5_deals

@@ -2,16 +2,18 @@
 then re-run backtests on MT5 data to verify Python results match.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
+import os
 from datetime import datetime, timezone
 
 import MetaTrader5 as mt5
-from analysis.optuna_filters import fetch_h1, run_strategy
+import pandas as pd
+
+from analysis.optuna_filters import run_strategy
 from strategies.linda_macd_lenient import LindaMACDLenientStrategy
-import os
 
 
 def init_mt5():
@@ -85,7 +87,7 @@ def main():
         compare_dataframes(mt5_eur, prev_eur, "EURUSD")
 
     # Step 2: Fetch from D:/MT5_EuroPrinter/terminal64.exe (the OLD method)
-    print(f"\n>>> Fetching EURUSD via D:/MT5_EuroPrinter path")
+    print("\n>>> Fetching EURUSD via D:/MT5_EuroPrinter path")
     mt5.shutdown()
     if mt5.initialize(path="D:\\MT5_EuroPrinter\\terminal64.exe"):
         old_eur = fetch_mt5_data('EURUSD', from_dt, to_dt)
@@ -108,7 +110,7 @@ def main():
     # Run on MT5 data
     m_mt5 = run_strategy(mt5_eur, LindaMACDLenientStrategy, eur_params, [], 'forex')
     if 'error' not in m_mt5:
-        print(f"\nMT5 data result:")
+        print("\nMT5 data result:")
         print(f"  PnL: ${m_mt5['net_pnl']:+,.0f}")
         print(f"  Sharpe: {m_mt5['sharpe']:+.2f}")
         print(f"  WR: {m_mt5['win_rate']*100:.1f}%")
@@ -120,7 +122,7 @@ def main():
     if os.path.exists(profile_path):
         with open(profile_path) as f:
             locked = json.load(f)
-        print(f"\nLocked profile result (from previous backtest):")
+        print("\nLocked profile result (from previous backtest):")
         for k in ['net_pnl', 'sharpe', 'win_rate', 'profit_factor', 'n_trades']:
             print(f"  {k}: {locked.get(k, 'N/A')}")
 
@@ -147,7 +149,7 @@ def main():
             from strategies.adx import ADX_Strategy
             m_adx = run_strategy(mt5_eur, ADX_Strategy, adx_eur_params, [], 'forex')
             if 'error' not in m_adx:
-                print(f"\nADX EUR on MT5 data:")
+                print("\nADX EUR on MT5 data:")
                 print(f"  PnL: ${m_adx['net_pnl']:+,.0f}")
                 print(f"  Sharpe: {m_adx['sharpe']:+.2f}")
                 print(f"  WR: {m_adx['win_rate']*100:.1f}%")

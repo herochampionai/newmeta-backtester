@@ -1,5 +1,6 @@
 """Standard backtest metrics. All annualized unless noted."""
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 

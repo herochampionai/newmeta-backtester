@@ -10,8 +10,10 @@ V6: ADAPTIVE per market regime
   - Both regimes: pullback to mid-zone
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

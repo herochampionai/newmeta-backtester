@@ -1,9 +1,10 @@
 """Parquet cache + symbol lookup. Cache files are immutable (named by sha).
 `load()` returns the most recent file matching symbol+timeframe."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Iterable
+
 import pandas as pd
 
 CACHE_DIR = Path(__file__).parent / "cache"

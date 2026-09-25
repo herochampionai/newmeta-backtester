@@ -1,18 +1,20 @@
 """Test V2 rewritten strategies on 2 OOS periods."""
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import pandas as pd
-import numpy as np
-import json
 
 from analysis.optuna_filters import fetch_h1, run_strategy
-from strategies.triple_rsi_v2 import TripleRSIV2Strategy
 from strategies.stoch533_mtf_v2 import Stoch533MTFV2
+from strategies.triple_rsi_v2 import TripleRSIV2Strategy
 
 
 def main():

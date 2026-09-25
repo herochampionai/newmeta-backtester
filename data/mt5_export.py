@@ -1,10 +1,14 @@
 """MT5 → Parquet export and live data access with persistent connection pooling."""
 from __future__ import annotations
-import argparse, hashlib, json, os, sys
-from pathlib import Path
+
+import hashlib
+import json
+import os
 from datetime import datetime
-import pandas as pd
+from pathlib import Path
+
 import MetaTrader5 as mt5
+import pandas as pd
 
 CACHE_DIR = Path(__file__).parent / "cache"
 ROOT = Path(__file__).parent.parent
@@ -62,7 +66,7 @@ def init_mt5(terminal: str | None = None) -> bool:
             return True
     except Exception:
         pass
-        
+
     init_kwargs = {}
     if terminal:
         init_kwargs["path"] = terminal
@@ -74,10 +78,10 @@ def init_mt5(terminal: str | None = None) -> bool:
 
 def fetch_bars(symbol: str, timeframe: str, start: str, end: str | None = None, n_bars: int | None = None) -> pd.DataFrame:
     tf = TF_MAP.get(timeframe.upper(), mt5.TIMEFRAME_H1)
-    
+
     # Ensure symbol is selected in Market Watch
     mt5.symbol_select(symbol, True)
-    
+
     # If symbol not found, try common alias resolution
     s_info = mt5.symbol_info(symbol)
     if s_info is None:
@@ -90,7 +94,7 @@ def fetch_bars(symbol: str, timeframe: str, start: str, end: str | None = None, 
         if alias:
             symbol = alias
             mt5.symbol_select(symbol, True)
-            
+
     if n_bars is not None:
         rates = mt5.copy_rates_from_pos(symbol, tf, 0, n_bars)
     else:
@@ -100,10 +104,10 @@ def fetch_bars(symbol: str, timeframe: str, start: str, end: str | None = None, 
         if (rates is None or len(rates) == 0) and start:
             # Fallback to copy recent bars
             rates = mt5.copy_rates_from_pos(symbol, tf, 0, 5000)
-            
+
     if rates is None or len(rates) == 0:
         raise RuntimeError(f"[MT5] no data for {symbol} {timeframe}")
-        
+
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
     df = df.set_index("time").sort_index()

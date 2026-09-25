@@ -8,13 +8,16 @@ Try:
 Test on 2Y + verify on 3Y window.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
 from datetime import datetime, timezone
+
 import MetaTrader5 as mt5
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies.top5_research import RegimeSwitchingEngineStrategy
@@ -100,7 +103,7 @@ half = len(eur_3y) // 2
 m_3y1 = run_strategy(eur_3y.iloc[:half], RegimeSwitchingEngineStrategy, best, [], 'forex')
 m_3y2 = run_strategy(eur_3y.iloc[half:], RegimeSwitchingEngineStrategy, best, [], 'forex')
 
-print(f'\n=== Best Regime Engine (PnL objective) ===')
+print('\n=== Best Regime Engine (PnL objective) ===')
 print(f'Tuning (2024-26): ${m_t["net_pnl"]:+,.0f}/Sh {m_t["sharpe"]:+.2f}/{m_t["n_trades"]}t')
 print(f'Val (2022-24):    ${m_v["net_pnl"]:+,.0f}/Sh {m_v["sharpe"]:+.2f}/{m_v["n_trades"]}t')
 print(f'3Y-H1 (2021-22):  ${m_3y1["net_pnl"]:+,.0f}/Sh {m_3y1["sharpe"]:+.2f}/{m_3y1["n_trades"]}t')
@@ -137,7 +140,7 @@ m_v = run_strategy(eur_v, RegimeSwitchingEngineStrategy, best2, [], 'forex')
 m_3y1 = run_strategy(eur_3y.iloc[:half], RegimeSwitchingEngineStrategy, best2, [], 'forex')
 m_3y2 = run_strategy(eur_3y.iloc[half:], RegimeSwitchingEngineStrategy, best2, [], 'forex')
 
-print(f'\n=== Best Regime Engine (Sharpe objective) ===')
+print('\n=== Best Regime Engine (Sharpe objective) ===')
 print(f'Tuning (2024-26): ${m_t["net_pnl"]:+,.0f}/Sh {m_t["sharpe"]:+.2f}/{m_t["n_trades"]}t')
 print(f'Val (2022-24):    ${m_v["net_pnl"]:+,.0f}/Sh {m_v["sharpe"]:+.2f}/{m_v["n_trades"]}t')
 print(f'3Y Total:         ${m_3y1["net_pnl"]+m_3y2["net_pnl"]:+,.0f}')

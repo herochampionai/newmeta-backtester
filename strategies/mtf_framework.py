@@ -23,9 +23,10 @@ HTF referee configurations:
 """
 from __future__ import annotations
 import warnings; warnings.filterwarnings('ignore')
+
 import numpy as np
 import pandas as pd
-from typing import Callable
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 
@@ -535,11 +536,42 @@ class MTFMACD_Confluence(MTFStrategy):
 
 # Bind ltf_strategy_cls at module level (after class definitions)
 from . import (
-    ac_ao as _ac_ao_mod, adx as _adx_mod, dem as _dem_mod, fbb as _fbb_mod,
-    mfi as _mfi_mod, ms as _ms_mod, mtf_stoch as _mtf_stoch_mod,
-    bb_rsi as _bb_rsi_mod, triple_rsi as _triple_rsi_mod, quad_stoch as _quad_stoch_mod,
-    stoch533_mtf as _stoch533_mod, macd_confluence as _macd_mod,
+    ac_ao as _ac_ao_mod,
 )
+from . import (
+    adx as _adx_mod,
+)
+from . import (
+    bb_rsi as _bb_rsi_mod,
+)
+from . import (
+    dem as _dem_mod,
+)
+from . import (
+    fbb as _fbb_mod,
+)
+from . import (
+    macd_confluence as _macd_mod,
+)
+from . import (
+    mfi as _mfi_mod,
+)
+from . import (
+    ms as _ms_mod,
+)
+from . import (
+    mtf_stoch as _mtf_stoch_mod,
+)
+from . import (
+    quad_stoch as _quad_stoch_mod,
+)
+from . import (
+    stoch533_mtf as _stoch533_mod,
+)
+from . import (
+    triple_rsi as _triple_rsi_mod,
+)
+
 MTFAC_AO.ltf_strategy_cls = _ac_ao_mod.AC_AO_Strategy
 MTFADX.ltf_strategy_cls = _adx_mod.ADX_Strategy
 MTFDeM.ltf_strategy_cls = _dem_mod.DeM_Strategy

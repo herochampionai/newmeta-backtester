@@ -10,10 +10,12 @@ Features:
 """
 
 from __future__ import annotations
+
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from dataclasses import dataclass, asdict
 from typing import Optional
+
 import numpy as np
 import pandas as pd
 
@@ -709,8 +711,8 @@ def auto_grade(df: pd.DataFrame, symbol: str = "", tf: str = "", source: str = "
 
 if __name__ == "__main__":
     # Quick self-test
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     idx = pd.date_range("2024-01-01", periods=500, freq="h", tz="UTC")
     np.random.seed(42)

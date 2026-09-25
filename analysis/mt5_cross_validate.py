@@ -10,11 +10,13 @@ This is the cleanest cross-validation since both Python and MT5 tester use
 the same data source from the same broker.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
 from datetime import datetime, timezone
+
+import pandas as pd
 
 try:
     import MetaTrader5 as mt5
@@ -115,7 +117,7 @@ def main():
         }
 
     # Also try to fetch some tick data for EURUSD (small range)
-    print(f"\n>>> EURUSD ticks sample (last 7 days)")
+    print("\n>>> EURUSD ticks sample (last 7 days)")
     ticks_from = datetime(2026, 9, 11, tzinfo=timezone.utc)
     ticks_to = datetime(2026, 9, 18, tzinfo=timezone.utc)
     ticks = fetch_ticks('EURUSD', ticks_from, ticks_to)
@@ -130,7 +132,7 @@ def main():
     # Save results summary
     with open('output/mt5_cross_validation.json', 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\nSummary saved → output/mt5_cross_validation.json")
+    print("\nSummary saved → output/mt5_cross_validation.json")
 
 
 if __name__ == "__main__":

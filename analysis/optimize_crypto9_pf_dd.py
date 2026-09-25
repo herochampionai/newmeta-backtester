@@ -5,13 +5,11 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import optuna
 
 from backtester.engine import run_direction
 from data.cache import load as load_cache
 from strategies.crypto_9 import CryptoNineStrategy
-
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "outputs"

@@ -13,7 +13,6 @@ import pandas as pd
 
 from backtester.engine_full import run_full
 
-
 DEFAULT_METRIC_KEYS: tuple[str, ...] = (
     "final_equity",
     "total_return",

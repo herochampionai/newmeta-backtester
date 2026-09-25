@@ -1,24 +1,28 @@
 """Optuna search for ADX strategy — tune zone thresholds per ticker + filters."""
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 import json
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
+from strategies._enhancement import EnhancedStrategy, session_filter
 from strategies.adx import ADX_Strategy
-from strategies._enhancement import EnhancedStrategy, session_filter, volatility_atr
 
 
 def fetch_h1(terminal, symbol, n_bars=20000):
@@ -141,13 +145,13 @@ def main():
           f"PF {n_best.get('profit_factor', 0):.2f} | "
           f"DD {n_best.get('max_dd', 0)*100:+.1f}% | {n_best.get('n_trades', 0)} trades")
     print(f"    params: {study_n.best_params}")
-    print(f"\n  BASELINE → OPTIMIZED:")
+    print("\n  BASELINE → OPTIMIZED:")
     print(f"    EUR: ${e0.get('net_pnl', 0):+,.0f} / {e0.get('sharpe', 0):+.2f} → ${e_best.get('net_pnl', 0):+,.0f} / {e_best.get('sharpe', 0):+.2f}")
     print(f"    NAS: ${n0.get('net_pnl', 0):+,.0f} / {n0.get('sharpe', 0):+.2f} → ${n_best.get('net_pnl', 0):+,.0f} / {n_best.get('sharpe', 0):+.2f}")
 
     with open("output/adx_best_params.json", "w") as f:
         json.dump({"eur": study_e.best_params, "nas": study_n.best_params}, f, indent=2)
-    print(f"\nSaved → output/adx_best_params.json")
+    print("\nSaved → output/adx_best_params.json")
 
 
 if __name__ == "__main__":

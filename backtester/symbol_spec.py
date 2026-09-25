@@ -5,8 +5,9 @@ triple-day comes from the broker (SYMBOL_SWAP_ROLLOVER3DAYS), not hardcoded Wed.
 Falls back to MARKET_PROFILES presets when MT5 offline so backtests never crash.
 """
 from __future__ import annotations
+
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 SPEC_CACHE = Path(__file__).parent.parent / "config" / "symbol_specs.json"
@@ -33,7 +34,7 @@ class SymbolSpec:
 
 
 def _preset_for(symbol: str) -> SymbolSpec:
-    from backtester.execution import profile_for, infer_market
+    from backtester.execution import infer_market, profile_for
     s = (symbol or "EURUSD").upper()
     prof = profile_for("Auto", s)
     digits = 2 if ("XAU" in s or "BTC" in s or "ETH" in s) else 5
@@ -65,8 +66,9 @@ def get_spec(symbol: str, terminal: str | None = None, refresh: bool = False) ->
         except Exception:
             pass
     try:
-        from data.mt5_export import resolve_terminal, init_mt5
         import MetaTrader5 as mt5
+
+        from data.mt5_export import init_mt5, resolve_terminal
         t = terminal or resolve_terminal()
         if t and init_mt5(t):
             info = mt5.symbol_info(sym)
@@ -84,7 +86,7 @@ def get_spec(symbol: str, terminal: str | None = None, refresh: bool = False) ->
                 pip_size = 0.01 if info.digits in (2, 3) else 0.0001
                 swap_long_pips = raw_swap_long / (pip_size * contract_sz) if contract_sz else -0.5
                 swap_short_pips = raw_swap_short / (pip_size * contract_sz) if contract_sz else 0.2
-                
+
                 spec = SymbolSpec(
                     symbol=sym, digits=int(info.digits), point=float(info.point),
                     pip_size=pip_size,

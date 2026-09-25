@@ -10,9 +10,10 @@ Best practice for MT5 Strategy Tester output:
 - .tst file (binary): complete test results
 - Journal log: human-readable test progress
 """
-import os, sys, time, json
-from pathlib import Path
+import sys
+import time
 from datetime import datetime
+from pathlib import Path
 
 cache_dir = Path(r'C:\Users\youha\AppData\Roaming\MetaQuotes\Terminal\6D35BF1728C0CA7D99E1A54264C3585C\Tester\cache')
 journal_dir = Path(r'C:\Users\youha\AppData\Roaming\MetaQuotes\Terminal\6D35BF1728C0CA7D99E1A54264C3585C\Tester\logs')

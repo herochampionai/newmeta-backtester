@@ -18,10 +18,11 @@ Usage:
     # run_bt(params, df_slice) -> metrics dict with sharpe/net_pnl
 """
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+
 import json
 import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -72,8 +73,8 @@ class CriterionStudyReport:
 
 
 def _spearman(a: list[float], b: list[float]) -> float:
-    from scipy.stats import spearmanr
     import numpy as np
+    from scipy.stats import spearmanr
     if len(a) < 3 or len(set(a)) < 2 or len(set(b)) < 2:
         return 0.0
     r = spearmanr(np.asarray(a, dtype=float), np.asarray(b, dtype=float))

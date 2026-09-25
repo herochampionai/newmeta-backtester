@@ -2,22 +2,17 @@
 hold up out-of-sample when run together. Also tests allocation stability across
 regime changes."""
 from __future__ import annotations
-from pathlib import Path
-import pandas as pd
-import numpy as np
-import yaml
+
 import sys
+from pathlib import Path
+
+import pandas as pd
+import yaml
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from analysis.optuna_optimizer import optimize_strategy, best_params
 from analysis.walkforward import walk_forward, wf_summary
-from analysis.markowitz_alloc import allocate
-from backtester.engine_full import run_full
-from backtester.grid_recovery import GRID_NONE
-from backtester.metrics_v2 import compute_all
-from strategies import STRATEGY_REGISTRY
 
 
 def walk_forward_all_strategies(df: pd.DataFrame, strategies: list[str] | None = None,
@@ -93,9 +88,9 @@ def main():
     out.parent.mkdir(exist_ok=True)
     wf_df.to_csv(out, index=False)
     print(f"\nWrote {out}")
-    print(f"\nPer-strategy OOS Sharpe (mean):")
+    print("\nPer-strategy OOS Sharpe (mean):")
     print(wf_df.groupby("strategy")["test_sharpe"].agg(["mean", "std", "count"]).round(3))
-    print(f"\nBest windows:")
+    print("\nBest windows:")
     print(wf_df.nlargest(5, "test_sharpe")[["strategy", "train_sharpe", "test_sharpe", "test_calmar"]].to_string(index=False))
 
 

@@ -1,9 +1,12 @@
 """Optuna search for DeM V5 + FBB V5 on 2Y OOS."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import fetch_h1, run_strategy
 from strategies.dem_fbb_v5 import DeMV5Strategy, FBBV5Strategy

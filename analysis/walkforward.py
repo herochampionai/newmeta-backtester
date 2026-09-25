@@ -6,9 +6,10 @@ Each window now also tracks ``idle_day_count`` — the number of days in
 the test window where no entry signals fired.  Idle days are never
 forced to trade; the strategy must beat the always-on baseline."""
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 import pandas as pd
-from backtester.metrics import metrics_from_returns
 
 
 @dataclass
@@ -30,10 +31,11 @@ def walk_forward(df: pd.DataFrame, strategy_name: str, param_spec: dict,
                  periods_per_year: int = 252 * 24,
                  ) -> list[WFWindow]:
     """Returns list of WFWindow. Caller is responsible for running Optuna per window."""
-    from strategies import STRATEGY_REGISTRY
-    from backtester.engine import run_direction
-    from analysis.optuna_optimizer import _sample
     import optuna
+
+    from analysis.optuna_optimizer import _sample
+    from backtester.engine import run_direction
+    from strategies import STRATEGY_REGISTRY
 
     cls = STRATEGY_REGISTRY[strategy_name]
     start = df.index[0]

@@ -1,19 +1,18 @@
 """Optuna search for V4 trend-following on macd_confluence, bb_rsi, quad_stoch, fbb."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 from analysis.optuna_filters import fetch_h1, run_strategy
-from strategies.trend_follow_v4_more import (
-    MACDConfluenceV4, BBRsiV4, QuadStochV4, FBBV4
-)
-
+from strategies.trend_follow_v4_more import FBBV4, BBRsiV4, MACDConfluenceV4, QuadStochV4
 
 PARAM_SPACES = {
     "macd_confluence_v4": lambda trial: {
@@ -122,7 +121,7 @@ def main():
     out = {k: v["params"] for k, v in results.items()}
     with open("output/v4_more_best_params.json", "w") as f:
         json.dump(out, f, indent=2)
-    print(f"\nSaved → output/v4_more_best_params.json")
+    print("\nSaved → output/v4_more_best_params.json")
 
     # Summary
     print("\n" + "=" * 100)

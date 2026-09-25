@@ -6,6 +6,7 @@ Now: NEWMETA_SEED (or --seed) flows everywhere, and every report embeds
 a data fingerprint so two runs can be proven to share inputs.
 """
 from __future__ import annotations
+
 import os
 import random
 
@@ -31,6 +32,7 @@ def data_fingerprint(df, symbol: str, timeframe: str, source: str) -> dict:
     """Lightweight content fingerprint: any bar added/removed/changed
     flips it. Not a file hash (caches rewrite); a content hash."""
     import hashlib
+
     import pandas as pd
     close = pd.Series(df["close"]).astype(float)
     h = hashlib.sha256()

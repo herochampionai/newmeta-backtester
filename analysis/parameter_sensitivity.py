@@ -13,9 +13,10 @@ Features:
 - CLI for quick analysis
 """
 from __future__ import annotations
-import itertools
+
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable
+
 import numpy as np
 import pandas as pd
 

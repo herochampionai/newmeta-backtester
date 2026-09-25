@@ -13,6 +13,7 @@ data; walk_forward/sensitivity/stress take ~30-90s; full_pipeline ~1-2 min.
 Clients should set generous timeouts for the slow ones.
 """
 from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
@@ -213,7 +214,7 @@ def stress(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "adx",
            spread_pips: float | None = None) -> dict:
     """Adversarial stress across 6 crisis scenarios. SLOW (~30s).
     Returns ROBUST/MARGINAL/FRAGILE verdict + worst scenario."""
-    from analysis.adversarial_stress import run_stress_test, CRISIS_SCENARIOS
+    from analysis.adversarial_stress import CRISIS_SCENARIOS, run_stress_test
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
 
@@ -240,8 +241,7 @@ def significance(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = 
     """Statistical significance: A/B t-test + Mann-Whitney + PSR + Deflated
     Sharpe (multiple-testing corrected). Fast."""
     from analysis.stat_tests import compare_strategies
-    from analysis.statistical_significance import (
-        probabilistic_sharpe_ratio, deflated_sharpe_ratio)
+    from analysis.statistical_significance import deflated_sharpe_ratio, probabilistic_sharpe_ratio
     params = _parse_params(params_json)
     df = _load(symbol, timeframe, source)
     metrics, trades = _backtest_df(df, strategy, params, capital, symbol,
@@ -277,6 +277,7 @@ def full_pipeline(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str =
     """Run the entire 8-stage chain. VERY SLOW (1-3 min). Returns the
     consolidated report (same artifact as run_pipeline.py)."""
     import argparse
+
     import run_pipeline as rp
     args = argparse.Namespace(
         symbol=symbol, timeframe=timeframe, strategy=strategy,
@@ -311,7 +312,7 @@ def screen_universe(strategies_json: str = '[{"name": "adx", "params": {}}]',
     """Strategy x symbol matrix: which ticker fits which strategy. SLOW
     (~10-60s depending on universe). Returns best_per_strategy and
     best_per_symbol tables."""
-    from analysis.universe_screener import screen, discover_symbols
+    from analysis.universe_screener import discover_symbols, screen
     strategies = json.loads(strategies_json)
     symbols = json.loads(symbols_json) if symbols_json else discover_symbols(timeframe)
     rep = screen(strategies, symbols=symbols, timeframe=timeframe,

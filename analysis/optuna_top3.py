@@ -1,13 +1,18 @@
 """Optuna-tune top 3 strategies — maximize min(tuning_pnl, val_pnl)."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies.top5_research import (
-    RegimeSwitchingEngineStrategy, AdaptiveADXStrategy, VolatilityBreakoutStrategy
+    AdaptiveADXStrategy,
+    RegimeSwitchingEngineStrategy,
+    VolatilityBreakoutStrategy,
 )
 
 eur = pd.read_csv('output/mt5_EURUSD_H1_2022_2026.csv', index_col='time', parse_dates=True)

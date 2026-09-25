@@ -9,17 +9,21 @@ Pipeline:
 Each overlay is independently optional. The flag name means what it says.
 """
 from __future__ import annotations
+
 import pandas as pd
-import numpy as np
 
 from backtester.adaptive import AdaptiveConfig
-from backtester.grid_recovery import GridRecoveryManager, GRID_NONE, GRID_LOSS, GRID_PROFIT, GRID_LOSS_AND_PROFIT
+from backtester.engine_adaptive import apply_adaptive
 from backtester.engine_grid import run_grid
 from backtester.engine_pure import run_pure
-from backtester.engine_adaptive import apply_adaptive
 from backtester.engine_swap import apply_swap
-from core.surgical_features import is_enabled, get_feature_params
-
+from backtester.grid_recovery import (
+    GRID_LOSS,
+    GRID_LOSS_AND_PROFIT,
+    GRID_NONE,
+    GRID_PROFIT,
+)
+from core.surgical_features import is_enabled
 
 GRID_LABELS = {GRID_NONE: "None", GRID_LOSS: "Loss", GRID_PROFIT: "Profit",
                GRID_LOSS_AND_PROFIT: "Loss+Profit"}
@@ -273,8 +277,8 @@ def run_full(df: pd.DataFrame,
     """
     # === Strict data gate (kill silent synthetic + stale + critical issues) ===
     if strict_data:
-        from backtester.pro_suite import grade_data
         from backtester.data_quality import analyze_data_quality, gate_check
+        from backtester.pro_suite import grade_data
         # Determine expected source based on tick_mode
         expected_source = "synthetic_ticks" if tick_mode in ("synthetic", "real") else "ohlc_bars"
         _g = grade_data(df, {"source": expected_source})

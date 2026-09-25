@@ -1,22 +1,42 @@
-from .indicators import ac, ao, adx, mfi, macd, stochastic, bollinger, dem, force_index, linear_regression_slope, rsi, obv, cvd, wma, volume_rising, stc
+from core.regime import RegimeAwareStrategy, detect_regimes, regime_performance_summary
+from core.universal_strategy import UniversalStrategy
+
 from .ac_ao import AC_AO_Strategy
 from .adx import ADX_Strategy
+from .bb_rsi import BBRsiStrategy
+from .crypto_9 import DEFAULT_PARAMS as CRYPTO_DEFAULT_PARAMS
+from .crypto_9 import PATTERN_NAMES as CRYPTO_PATTERN_NAMES
+from .crypto_9 import PATTERN_VARIANTS as CRYPTO_PATTERN_VARIANTS
+from .crypto_9 import CryptoNineStrategy
 from .dem import DeM_Strategy
 from .fbb import FBB_Strategy
-from .bb_rsi import BBRsiStrategy
-from .triple_rsi import TripleRSIStrategy
+from .indicators import (
+    ac,
+    adx,
+    ao,
+    bollinger,
+    cvd,
+    dem,
+    force_index,
+    linear_regression_slope,
+    macd,
+    mfi,
+    obv,
+    rsi,
+    stc,
+    stochastic,
+    volume_rising,
+    wma,
+)
+from .light9.light9_strategy import Light9Strategy
+from .light9_v2.light9_v2_strategy import Light9V2Strategy
+from .macd_confluence import MACDConfluenceStrategy
 from .mfi import MFI_Strategy
 from .ms import MS_Strategy
 from .mtf_stoch import QuadStochStrategy, resample_htf
 from .quad_stoch import QuadStochSameTF
 from .stoch533_mtf import Stoch533MTF
-from .macd_confluence import MACDConfluenceStrategy
-from .crypto_9 import CryptoNineStrategy
-from .light9_v2.light9_v2_strategy import Light9V2Strategy
-from .light9.light9_strategy import Light9Strategy
-from .crypto_9 import PATTERN_VARIANTS as CRYPTO_PATTERN_VARIANTS, PATTERN_NAMES as CRYPTO_PATTERN_NAMES, DEFAULT_PARAMS as CRYPTO_DEFAULT_PARAMS
-from core.universal_strategy import UniversalStrategy
-from core.regime import RegimeAwareStrategy, detect_regimes, regime_performance_summary
+from .triple_rsi import TripleRSIStrategy
 
 __all__ = [
     "AC_AO_Strategy", "ADX_Strategy", "DeM_Strategy", "FBB_Strategy",

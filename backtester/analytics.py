@@ -6,9 +6,8 @@
   - Adaptive sizer state over time
 """
 from __future__ import annotations
+
 import pandas as pd
-import numpy as np
-from collections import Counter
 
 
 def trades_per_year(trades: pd.DataFrame, year_col: str = "exit_bar",

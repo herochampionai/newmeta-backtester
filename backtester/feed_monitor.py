@@ -15,15 +15,16 @@ Usage:
     grade = monitor.get_grade()
 """
 from __future__ import annotations
-import time
-import threading
-import json
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional, Callable
-from datetime import datetime
-import numpy as np
 
+import json
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Callable, Optional
+
+import numpy as np
 
 # Feed quality thresholds
 HEARTBEAT_TIMEOUT_SEC = 10.0  # alert if no tick for 10s

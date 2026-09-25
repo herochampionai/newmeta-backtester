@@ -1,20 +1,27 @@
 """Test 11 new strategies (10 SCreener setups + Linda MACD) on 2Y OOS."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import fetch_h1, run_strategy
 from strategies.screener_and_linda import (
-    ScreenerL0Strategy, ScreenerS5Strategy,  # Stochastic
-    ScreenerL1Strategy, ScreenerS6Strategy,  # MA Cross
-    ScreenerL2Strategy, ScreenerS7Strategy,  # MACD
-    ScreenerL3Strategy, ScreenerS8Strategy,  # Bollinger
-    ScreenerL4Strategy, ScreenerS9Strategy,  # SuperTrend
     LindaMACDStrategy,  # Linda Raschke
+    ScreenerL0Strategy,  # Stochastic
+    ScreenerL1Strategy,  # MA Cross
+    ScreenerL2Strategy,  # MACD
+    ScreenerL3Strategy,  # Bollinger
+    ScreenerL4Strategy,  # SuperTrend
+    ScreenerS5Strategy,
+    ScreenerS6Strategy,
+    ScreenerS7Strategy,
+    ScreenerS8Strategy,
+    ScreenerS9Strategy,
 )
-
 
 STRATS = {
     "sc_l0_stoch": (ScreenerL0Strategy, {"stoch_period": [5, 30], "smooth_k": [1, 5], "smooth_d": [1, 5], "over_sold": [10, 30], "sma_period": [100, 300], "cooldown": [3, 30]}),
@@ -72,7 +79,7 @@ def main():
     # Save
     with open('output/screener_linda_best.json', 'w') as f:
         json.dump(all_results, f, indent=2)
-    print(f"\nSaved → output/screener_linda_best.json")
+    print("\nSaved → output/screener_linda_best.json")
 
     # Summary
     print('\n' + '=' * 100)

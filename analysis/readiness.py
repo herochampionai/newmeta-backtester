@@ -12,7 +12,6 @@ from typing import Any, Iterable, Mapping
 
 import pandas as pd
 
-
 STATUS_PASS = "PASS"
 STATUS_WATCH = "WATCH"
 STATUS_FAIL = "FAIL"

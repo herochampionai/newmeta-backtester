@@ -5,8 +5,10 @@ discrepancy between Python and MT5 — user needs to update the EA.
 """
 import warnings; warnings.filterwarnings('ignore')
 import sys
+
 sys.path.insert(0, '.')
 import pandas as pd
+
 from analysis.optuna_filters import fetch_h1, run_strategy
 from strategies.adx import ADX_Strategy
 
@@ -42,7 +44,7 @@ def main():
     }
 
     print("\n=== ADX_NAS — Python full vs MQL5-compatible ===")
-    print(f"\nPython full (zone logic included):")
+    print("\nPython full (zone logic included):")
     r = run_strategy(nas_oos, ADX_Strategy, python_full, [], "nas100")
     if "error" in r:
         print(f"  ERR: {r['error']}")
@@ -50,7 +52,7 @@ def main():
         print(f"  PnL ${r['net_pnl']:+,.0f} | Sharpe {r['sharpe']:+.2f} | "
               f"WR {r['win_rate']*100:.1f}% | PF {r['profit_factor']:.2f} | {r['n_trades']} trades")
 
-    print(f"\nMQL5-compatible (NO zone logic):")
+    print("\nMQL5-compatible (NO zone logic):")
     r = run_strategy(nas_oos, ADX_Strategy, mql5_compat, [], "nas100")
     if "error" in r:
         print(f"  ERR: {r['error']}")
@@ -59,7 +61,7 @@ def main():
               f"WR {r['win_rate']*100:.1f}% | PF {r['profit_factor']:.2f} | {r['n_trades']} trades")
 
     print("\n=== ADX_EUR — Python full vs MQL5-compatible ===")
-    print(f"\nPython full (zone logic included):")
+    print("\nPython full (zone logic included):")
     r = run_strategy(eur_oos, ADX_Strategy, python_full, [], "forex")
     if "error" in r:
         print(f"  ERR: {r['error']}")
@@ -67,7 +69,7 @@ def main():
         print(f"  PnL ${r['net_pnl']:+,.0f} | Sharpe {r['sharpe']:+.2f} | "
               f"WR {r['win_rate']*100:.1f}% | PF {r['profit_factor']:.2f} | {r['n_trades']} trades")
 
-    print(f"\nMQL5-compatible (NO zone logic):")
+    print("\nMQL5-compatible (NO zone logic):")
     r = run_strategy(eur_oos, ADX_Strategy, mql5_compat, [], "forex")
     if "error" in r:
         print(f"  ERR: {r['error']}")

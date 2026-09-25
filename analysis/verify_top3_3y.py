@@ -1,12 +1,16 @@
 """Verify regime_engine and adaptive_adx on a longer 3-year window for confidence."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-from analysis.optuna_filters import run_strategy
-from strategies.top5_research import RegimeSwitchingEngineStrategy, AdaptiveADXStrategy
 from datetime import datetime, timezone
+
 import MetaTrader5 as mt5
+import pandas as pd
+
+from analysis.optuna_filters import run_strategy
+from strategies.top5_research import AdaptiveADXStrategy, RegimeSwitchingEngineStrategy
 
 # Connect to MT5 and fetch 4-year data for more robust validation
 mt5.initialize(path='D:\\MT5_Bybit\\terminal64.exe')
@@ -46,4 +50,4 @@ for r in results:
         print(f'Combined 3y PnL: ${total_pnl:+,.0f}')
         # Compare to our existing robust ADX variants
         # ADX EUR_B was T $7,369 / Sh 5.30 / 293 trades on the same 2Y window
-        print(f'(For comparison: adx_EUR_B T $7,369 / 293t over 2Y 2024-26)')
+        print('(For comparison: adx_EUR_B T $7,369 / 293t over 2Y 2024-26)')

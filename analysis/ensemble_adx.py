@@ -1,9 +1,12 @@
 """Last attempt: ensemble of 3 ADX variants (different params, same algo) for diversification."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies._smart_merge import VoteStrategy
@@ -132,4 +135,4 @@ if robust_b and robust_c:
                        'cooldown': 8, 'vote_threshold': 2,
                        'tuning_pnl': m_t['net_pnl'], 'tuning_sharpe': m_t['sharpe'], 'tuning_trades': m_t['n_trades'],
                        'val_pnl': m_v['net_pnl'], 'val_sharpe': m_v['sharpe'], 'val_trades': m_v['n_trades']}, f, indent=2, default=str)
-        print(f'\n  ✅ Saved → output/best_ensemble.json')
+        print('\n  ✅ Saved → output/best_ensemble.json')

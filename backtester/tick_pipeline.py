@@ -10,10 +10,12 @@ Features:
 """
 
 from __future__ import annotations
-import struct
+
 import json
-from pathlib import Path
+import struct
 from dataclasses import dataclass
+from pathlib import Path
+
 import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
@@ -294,7 +296,8 @@ def download_truefx(symbol: str, start: str, end: str, out_dir: Path | str) -> D
             sess = _session_with_retries()
             resp = sess.get(url, timeout=30)
             if resp.status_code == 200:
-                import zipfile, io
+                import io
+                import zipfile
                 with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
                     for name in zf.namelist():
                         with zf.open(name) as f:

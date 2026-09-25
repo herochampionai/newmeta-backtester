@@ -11,15 +11,14 @@ For now, deep backtest = synthetic tick-from-bar (zig-zag) + variable spread.
 Real tick data requires MT5 + recent history.
 """
 from __future__ import annotations
-from pathlib import Path
-import pandas as pd
-import numpy as np
 
+import numpy as np
+import pandas as pd
+
+from backtester.grid_recovery import GRID_NONE, GridRecoveryManager
 from backtester.metrics_v2 import compute_all
-from backtester.analytics import streak_stats, annual_trade_count
-from backtester.grid_recovery import GridRecoveryManager, GRID_NONE
-from data.tick_data import synthesize_ticks_from_bars, fetch_ticks_with_priority
 from data.spread_spec import default_spread_series, get_spreads_mt5
+from data.tick_data import fetch_ticks_with_priority, synthesize_ticks_from_bars
 
 
 def deep_backtest(df: pd.DataFrame,
@@ -178,7 +177,8 @@ def deep_backtest(df: pd.DataFrame,
     if grid_mode == GRID_NONE:
         # --- Pure tick-accurate single-position sim per strategy (order-ticket fills) ---
         import math
-        from backtester.order_engine import market_fill, check_exits_tick, Ticket
+
+        from backtester.order_engine import Ticket, check_exits_tick, market_fill
         all_trades: list[dict] = []
         equity = pd.Series(10000.0, index=df.index, dtype=float)
         cash = 10000.0

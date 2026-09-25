@@ -7,10 +7,10 @@ Since headless tester has been broken (silent exit), document:
 4. Auto-verification using MT5 Python API for new strategies
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
 
 print('=' * 80)
 print('1. CROSS-VALIDATION SUMMARY (Python backtester vs MT5 data)')
@@ -41,6 +41,8 @@ with open('output/final_8/Final_8_v1.4.json') as f:
 
 # Confidence intervals assuming trades are independent
 import math
+
+
 def ci(pnl, trades, confidence=0.95):
     """Standard CI for trade mean: pnl ± z * sqrt(variance / n)"""
     if trades <= 1: return (pnl, pnl, pnl)

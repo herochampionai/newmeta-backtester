@@ -18,13 +18,13 @@ Usage:
     metrics = portfolio.compute_metrics()
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional
-import json
-from pathlib import Path
-import numpy as np
-import pandas as pd
 
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
 
 # FX rate cache (USD-base default)
 FX_CACHE_PATH = Path(__file__).parent.parent / "config" / "fx_rates.json"

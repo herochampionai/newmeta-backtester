@@ -10,10 +10,10 @@ Methods:
 Output: recommended lot sizes assuming $100k account, fixed 0.5% risk per trade.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
 
 # Load Final 8 v1.4
 with open('output/final_8/Final_8_v1.4.json') as f:

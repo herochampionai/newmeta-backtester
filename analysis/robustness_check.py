@@ -10,12 +10,14 @@ If both periods profit, the strategy is ROBUST.
 If only Period 1 profits, it's likely OVERFIT.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
-sys.path.insert(0, '.')
-from pathlib import Path
-import pandas as pd
-import importlib
+import json
+import sys
 
+sys.path.insert(0, '.')
+import importlib
+from pathlib import Path
+
+import pandas as pd
 
 VALIDATION_START = pd.Timestamp('2022-09-17', tz='UTC')
 VALIDATION_END = pd.Timestamp('2024-09-17', tz='UTC')
@@ -72,8 +74,8 @@ if profiles_dir.exists():
 
 print('=' * 110)
 print('ROBUSTNESS CHECK — same params on DIFFERENT OOS period')
-print(f'Tuning period:  2024-09 → 2026-09 (the period Optuna was tuned on)')
-print(f'Validation:    2022-09 → 2024-09 (NEW period, unseen by Optuna)')
+print('Tuning period:  2024-09 → 2026-09 (the period Optuna was tuned on)')
+print('Validation:    2022-09 → 2024-09 (NEW period, unseen by Optuna)')
 print('=' * 110)
 
 from analysis.optuna_filters import fetch_h1, run_strategy
@@ -109,7 +111,7 @@ for key, params in sorted(all_params.items()):
 
 # Show comparison: Tuning period vs Validation period
 print('\n' + '=' * 110)
-print(f'COMPARISON: tuning period (2024-09 → 2026-09) vs validation period (2022-09 → 2024-09)')
+print('COMPARISON: tuning period (2024-09 → 2026-09) vs validation period (2022-09 → 2024-09)')
 print('=' * 110)
 print(f"{'Strategy':<28} {'Asset':<5} {'─ Tuning ─':>28} {'─ Validation ─':>28} {'Robust?'}")
 print(f"{'':<28} {'':<5} {'PnL':>10} {'Sharpe':>7} {'WR':>5} {'PF':>5}    {'PnL':>10} {'Sharpe':>7} {'WR':>5} {'PF':>5}")
@@ -175,7 +177,7 @@ print(f'  ✗ Losing on both:                    {losing}/{len(all_keys)}')
 # Aggregate PnL comparison
 total_tuning = sum(r.get('net_pnl', 0) for r in tuning_results)
 total_val = sum(r.get('net_pnl', 0) for r in results)
-print(f'\n  Combined PnL:')
+print('\n  Combined PnL:')
 print(f'    Tuning period (2024-09 → 2026-09):    ${total_tuning:+,.0f}')
 print(f'    Validation period (2022-09 → 2024-09): ${total_val:+,.0f}')
 print(f'    Total combined:                       ${total_tuning + total_val:+,.0f}')
@@ -204,4 +206,4 @@ with open(out_dir / 'robustness_check.json', 'w') as f:
             for k in all_keys
         ]
     }, f, indent=2, default=str)
-print(f'\n  Saved → output/robustness_check.json')
+print('\n  Saved → output/robustness_check.json')

@@ -9,11 +9,12 @@ Workflow:
 This is the ONLY way to know if our Python port is faithful to the MQL5 logic.
 """
 from __future__ import annotations
+
 import argparse
 import json
-from pathlib import Path
 import sys
-import numpy as np
+from pathlib import Path
+
 import pandas as pd
 
 ROOT = Path(__file__).parent.parent
@@ -23,7 +24,6 @@ from analysis.mt5_trade_parser import parse_mt5_deals_csv
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from strategies import STRATEGY_REGISTRY
-
 
 # Default MQL5 EA defaults (taken from `multi strat newmeta.mq5` after patches)
 MQL5_DEFAULTS = {

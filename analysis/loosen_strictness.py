@@ -8,12 +8,15 @@ Approach:
 Focus on adx_EUR, ms, sc_s5_stoch, sc_s8_bb, linda_macd
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
-from analysis.optuna_filters import fetch_h1, run_strategy
+from analysis.optuna_filters import run_strategy
 
 # Load MT5 data
 eur = pd.read_csv('output/mt5_EURUSD_H1_2022_2026.csv', index_col='time', parse_dates=True)
@@ -149,6 +152,7 @@ p = {**{'use_di_cross': True, 'open_orders_type': 1, 'close_orders_type': 1},
      'sweep_lookback': best['swp'], 'level_close_orders_1': best['cl1'],
      'level_close_orders_2': best['cl2'], 'close_orders_type': best['cot']}
 from strategies.adx import ADX_Strategy
+
 m_t = run_strategy(eur_t, ADX_Strategy, p, [], 'forex')
 m_v = run_strategy(eur_v, ADX_Strategy, p, [], 'forex')
 robust = (m_t['net_pnl'] > 0 and m_v['net_pnl'] > 0)
@@ -166,6 +170,7 @@ p = {**{'fast': best['fast'], 'slow': best['slow'], 'signal': best['sig'],
         'use_sma': best['use_sma'], 'sma_p': best['sma_p'], 'use_hist': best['use_hist'],
         'cd': best['cd']}}
 from strategies.linda_macd_lenient import LindaMACDLenientStrategy
+
 m_t = run_strategy(eur_t, LindaMACDLenientStrategy, p, [], 'forex')
 m_v = run_strategy(eur_v, LindaMACDLenientStrategy, p, [], 'forex')
 robust = (m_t['net_pnl'] > 0 and m_v['net_pnl'] > 0)
@@ -183,6 +188,7 @@ p = {**{'k_period': best['k'], 'd_period': best['d'], 'slowing': best['slowing']
         'ob_level': best['ob'], 'os_level': best['os'], 'sma_filter': best['sma'],
         'sma_period': best['sma_p'], 'cooldown': best['cd']}}
 from strategies.screener_and_linda import ScreenerS5Strategy
+
 m_t = run_strategy(eur_t, ScreenerS5Strategy, p, [], 'forex')
 m_v = run_strategy(eur_v, ScreenerS5Strategy, p, [], 'forex')
 robust = (m_t['net_pnl'] > 0 and m_v['net_pnl'] > 0)

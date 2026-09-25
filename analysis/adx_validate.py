@@ -4,23 +4,26 @@ If the same params produce similar results on the previous 12 months, the strate
 If they don't, the Optuna baseline is over-fit.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import json
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+import pandas as pd
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
+from strategies._enhancement import EnhancedStrategy, regime_filter_advanced
 from strategies.adx import ADX_Strategy
-from strategies._enhancement import EnhancedStrategy, regime_filter_advanced, killzone_filter
 
 
 def fetch_h1(terminal, symbol, n_bars=20000):

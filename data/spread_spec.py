@@ -1,17 +1,20 @@
 """Realistic spread model — load broker spreads from MT5, fall back to default.
 """
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 def get_spreads_mt5(symbol: str, n_days: int = 30) -> pd.Series | None:
     """Fetch recent spread history from MT5 (real broker spreads).
     Returns Series indexed by datetime, or None if unavailable."""
     try:
-        from data.mt5_export import resolve_terminal, init_mt5
         from datetime import datetime, timedelta
+
         import MetaTrader5 as mt5
+
+        from data.mt5_export import init_mt5, resolve_terminal
         terminal = resolve_terminal()
         if not terminal or not init_mt5(terminal):
             return None

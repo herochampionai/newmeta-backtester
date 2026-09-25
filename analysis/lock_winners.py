@@ -18,29 +18,33 @@ Outputs:
 from __future__ import annotations
 import warnings; warnings.filterwarnings('ignore')
 import sys
+
 sys.path.insert(0, '.')
 
-import pandas as pd
-import numpy as np
 import json
 import os
 from pathlib import Path
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+import numpy as np
+import pandas as pd
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
 from strategies import (
-    MULTI_STRAT_EA_REGISTRY, CRYPTO_STRAT_EA_REGISTRY,
-    AC_AO_Strategy, ADX_Strategy, DeM_Strategy, FBB_Strategy, MFI_Strategy,
-    MS_Strategy, BBRsiStrategy, QuadStochSameTF, Stoch533MTF,
-    TripleRSIStrategy, MACDConfluenceStrategy,
+    CRYPTO_STRAT_EA_REGISTRY,
+    MULTI_STRAT_EA_REGISTRY,
 )
-from strategies.trend_follow_v4 import TripleRSIV4Strategy, Stoch533V4
+from strategies.trend_follow_v4 import Stoch533V4, TripleRSIV4Strategy
+
 TripleRSIV4 = TripleRSIV4Strategy
 from strategies.trend_follow_v4_more import (
-    MACDConfluenceV4, BBRsiV4, QuadStochV4, FBBV4,
+    FBBV4,
+    BBRsiV4,
+    MACDConfluenceV4,
+    QuadStochV4,
 )
 
 OOS_2Y_START = pd.Timestamp("2024-09-17", tz="UTC")

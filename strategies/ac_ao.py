@@ -19,8 +19,10 @@ AC_OpenOrdersType semantics (Buy condition first, then mirror for Sell):
   8: AC[0]>LevelDn AND AC[1]<LevelDn AND AC[0]>AC[1]   (cross up from -)
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

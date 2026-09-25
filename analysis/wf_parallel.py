@@ -31,20 +31,19 @@ import json
 import sys
 import traceback
 from pathlib import Path
-from dataclasses import asdict
 
 import pandas as pd
-import numpy as np
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from strategies import MULTI_STRAT_EA_REGISTRY, STRATEGY_REGISTRY
-from strategies import CRYPTO_PATTERN_VARIANTS, CRYPTO_PATTERN_NAMES
-from backtester.engine_full import run_full, GRID_NONE
-from backtester.metrics_v2 import compute_all
 from analysis.data_loader import load_asset
-from analysis.walkforward import walk_forward, WFWindow
+from analysis.walkforward import walk_forward
+from strategies import (
+    CRYPTO_PATTERN_VARIANTS,
+    MULTI_STRAT_EA_REGISTRY,
+    STRATEGY_REGISTRY,
+)
 
 _ALL_STRATEGY_NAMES = list(STRATEGY_REGISTRY.keys())
 

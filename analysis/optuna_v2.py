@@ -1,12 +1,15 @@
 """Optuna v2: Regime Engine + Adaptive ADX with focus on HIGH PnL + ROBUST."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
-from strategies.top5_research import RegimeSwitchingEngineStrategy, AdaptiveADXStrategy
+from strategies.top5_research import AdaptiveADXStrategy, RegimeSwitchingEngineStrategy
 
 eur = pd.read_csv('output/mt5_EURUSD_H1_2022_2026.csv', index_col='time', parse_dates=True)
 if eur.index.tz is None:
@@ -82,7 +85,7 @@ m_t = run_strategy(eur_t, RegimeSwitchingEngineStrategy, best_r, [], 'forex')
 m_v = run_strategy(eur_v, RegimeSwitchingEngineStrategy, best_r, [], 'forex')
 robust_r = m_t['net_pnl'] > 0 and m_v['net_pnl'] > 0
 
-print(f'\n=== Regime Engine v2 ===')
+print('\n=== Regime Engine v2 ===')
 print(f'Tuning: ${m_t["net_pnl"]:+,.0f}/Sh {m_t["sharpe"]:+.2f}/{m_t["n_trades"]}t')
 print(f'Val:    ${m_v["net_pnl"]:+,.0f}/Sh {m_v["sharpe"]:+.2f}/{m_v["n_trades"]}t')
 print(f'ROBUST: {robust_r}')
@@ -103,7 +106,7 @@ m_t = run_strategy(eur_t, AdaptiveADXStrategy, best_a, [], 'forex')
 m_v = run_strategy(eur_v, AdaptiveADXStrategy, best_a, [], 'forex')
 robust_a = m_t['net_pnl'] > 0 and m_v['net_pnl'] > 0
 
-print(f'\n=== Adaptive ADX v2 ===')
+print('\n=== Adaptive ADX v2 ===')
 print(f'Tuning: ${m_t["net_pnl"]:+,.0f}/Sh {m_t["sharpe"]:+.2f}/{m_t["n_trades"]}t')
 print(f'Val:    ${m_v["net_pnl"]:+,.0f}/Sh {m_v["sharpe"]:+.2f}/{m_v["n_trades"]}t')
 print(f'ROBUST: {robust_a}')

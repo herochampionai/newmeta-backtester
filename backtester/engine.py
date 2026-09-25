@@ -2,9 +2,11 @@
 Inputs: OHLCV df, Signals dataclass (entries, exits, direction).
 Output: vectorbt Portfolio + summary dict (Sharpe, Sortino, Calmar, MaxDD, ...)."""
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import vectorbt as vbt
+
 from .metrics import metrics_from_returns
 
 

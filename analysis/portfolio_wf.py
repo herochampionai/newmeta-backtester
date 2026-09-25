@@ -26,8 +26,8 @@ import argparse
 import json
 import sys
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
-from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -36,9 +36,9 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from analysis.data_loader import load_asset
-from analysis.walkforward import walk_forward
 from analysis.wf_parallel import (
-    _resolve_strategy_name, _default_params_for_strategy,
+    _default_params_for_strategy,
+    _resolve_strategy_name,
     list_available_strategies,
 )
 from backtester.engine import run_direction, run_portfolio
@@ -118,9 +118,10 @@ def portfolio_walk_forward(
     allocation_method: str = "risk_parity",
 ) -> list[PortfolioWindow]:
     """Run portfolio-level walk-forward across all strategies on one symbol."""
-    from strategies import STRATEGY_REGISTRY
-    from analysis.optuna_optimizer import _sample
     import optuna
+
+    from analysis.optuna_optimizer import _sample
+    from strategies import STRATEGY_REGISTRY
 
     results: list[PortfolioWindow] = []
     start = df.index[0]

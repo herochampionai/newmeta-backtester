@@ -4,11 +4,11 @@ Run: `optuna-dashboard sqlite:///optuna.db` to monitor.
 Workers: `python -m backtester.distributed_optuna worker --study study_name`
 """
 from __future__ import annotations
-import argparse
-import optuna
-from typing import Any, Callable
-from pathlib import Path
 
+import argparse
+from typing import Callable
+
+import optuna
 
 DEFAULT_STORAGE = "sqlite:///optuna.db"
 
@@ -74,7 +74,6 @@ if __name__ == "__main__":
         print(f"Created study '{args.study}' at {args.storage}")
     elif args.cmd == "worker":
         # Import objective from analysis.optuna_optimizer
-        from analysis.optuna_optimizer import optimize_strategy_criterion
         # This is a placeholder — worker needs objective fn passed in real use
         print("Worker mode: import and pass objective function in your script")
     elif args.cmd == "best":

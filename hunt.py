@@ -12,6 +12,7 @@ Usage:
     python hunt.py --symbols auto   # discover cached symbols
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -65,14 +66,14 @@ def main() -> int:
     ap.add_argument("--wf-embargo", type=int, default=24)
     args = ap.parse_args()
 
-    from backtester.repro import resolve_seed, set_global_seed
-    from run_pipeline import load_data, _make_strategy, _sig_tuple
-    from backtester.engine_full import run_full
-    from analysis.universe_screener import screen
     from analysis.fine_tuner import fine_tune
-    from analysis.walkforward_v2 import walk_forward_v2
     from analysis.permutation_test import permutation_pvalue
     from analysis.review_gate import review
+    from analysis.universe_screener import screen
+    from analysis.walkforward_v2 import walk_forward_v2
+    from backtester.engine_full import run_full
+    from backtester.repro import resolve_seed, set_global_seed
+    from run_pipeline import _make_strategy, _sig_tuple, load_data
 
     seed = set_global_seed(resolve_seed(args.seed))
     t0 = time.time()

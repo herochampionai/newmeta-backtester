@@ -6,28 +6,30 @@ For each strategy that previously got "no entries" in Optuna batch, try:
   3. If nothing works, report the strategy as fundamentally limited on the data
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
 import pandas as pd
-import numpy as np
-import json
 
 from analysis.optuna_filters import fetch_h1, run_strategy
+from strategies._enhancement import (
+    killzone_filter,
+    mtf_trend,
+    regime_filter_advanced,
+)
+from strategies.macd_confluence import MACDConfluenceStrategy
 from strategies.ms import MS_Strategy
 from strategies.mtf_stoch import QuadStochStrategy
-from strategies.triple_rsi import TripleRSIStrategy
 from strategies.quad_stoch import QuadStochSameTF
 from strategies.stoch533_mtf import Stoch533MTF
-from strategies.macd_confluence import MACDConfluenceStrategy
-from strategies._enhancement import (
-    regime_filter_advanced, killzone_filter, market_context_pullback,
-    mtf_trend, regime_adx, session_filter,
-)
-
+from strategies.triple_rsi import TripleRSIStrategy
 
 STRAT_CLASSES = {
     "ms": MS_Strategy,

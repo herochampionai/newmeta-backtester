@@ -1,18 +1,16 @@
 """More aggressive loosening: short cooldowns, wider windows, multiple primaries."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
-from analysis.optuna_filters import fetch_h1, run_strategy
-from strategies._smart_merge import VoteStrategy, PrimaryWithFilterStrategy
-from strategies.screener_and_linda import (
-    ScreenerS5Strategy, ScreenerS6Strategy,
-    ScreenerS7Strategy, ScreenerS8Strategy
-)
+from analysis.optuna_filters import run_strategy
+from strategies._smart_merge import PrimaryWithFilterStrategy, VoteStrategy
 from strategies.adx import ADX_Strategy
-from strategies._combined import CombinedStrategy
+from strategies.screener_and_linda import ScreenerS5Strategy, ScreenerS6Strategy
 
 eur = pd.read_csv('output/mt5_EURUSD_H1_2022_2026.csv', index_col='time', parse_dates=True)
 if eur.index.tz is None:

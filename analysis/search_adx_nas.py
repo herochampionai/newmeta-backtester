@@ -1,12 +1,15 @@
 """Search for ROBUST adx_NAS variants — same approach as EUR (variant B was a winner)."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from datetime import datetime, timezone
+
 import MetaTrader5 as mt5
 
 # Connect to MT5 and fetch NAS100 data

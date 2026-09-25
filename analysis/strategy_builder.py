@@ -21,14 +21,13 @@ Usage:
     # spec.path -> strategies/generated_rsi_mean_reversion.py (import-checked)
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-from pathlib import Path
+
 import py_compile
 import re
+from dataclasses import dataclass, field
+from pathlib import Path
 
-import numpy as np
 import pandas as pd
-
 
 SUPPORTED_HELP = """Supported: rsi(period) | adx(period)+diplus/diminus | macd(fast,slow,signal)+signal
 | bollinger(period,dev)+upper/lower | dem(period) | close|open|high|low.
@@ -323,6 +322,7 @@ def build_from_brief(text: str, name: str | None = None,
 
     # Import-check + structural smoke on synthetic data.
     import importlib
+
     import numpy as np
     mod = importlib.import_module(f"strategies.generated_{slug}")
     cls = getattr(mod, class_name)

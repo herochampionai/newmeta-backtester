@@ -2,8 +2,7 @@
 Tick data enables realistic execution simulation (path-dependent fills, spread variability,
 intra-bar order triggers)."""
 from __future__ import annotations
-from pathlib import Path
-from datetime import datetime
+
 import numpy as np
 import pandas as pd
 
@@ -14,8 +13,9 @@ def fetch_ticks_mt5(symbol: str, start: str, end: str | None = None,
     Returns (df, info) where df has columns: time, bid, ask, last, volume, flags.
     """
     try:
-        from data.mt5_export import resolve_terminal, init_mt5
         from datetime import datetime
+
+        from data.mt5_export import init_mt5, resolve_terminal
         t = terminal or resolve_terminal()
         if not t:
             return None, {"error": "no_terminal"}

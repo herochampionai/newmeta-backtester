@@ -1,12 +1,11 @@
 """Data fetcher with priority chain: LIVE MT5 → Yahoo Finance → cached Parquet → synthetic.
 Used by the Streamlit front-end and run_pipeline."""
 from __future__ import annotations
-import os
-import sys
+
 from pathlib import Path
-from datetime import datetime
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 ROOT = Path(__file__).parent.parent
 
@@ -32,7 +31,7 @@ def load_settings() -> dict:
 def try_live_mt5(symbol: str, timeframe: str, start: str, end: str | None,
                  terminal_override: str | None = None) -> tuple[pd.DataFrame | None, dict]:
     try:
-        from data.mt5_export import resolve_terminal, init_mt5, fetch_bars
+        from data.mt5_export import fetch_bars, init_mt5, resolve_terminal
         terminal = resolve_terminal(terminal_override)
         if not terminal:
             return None, {"error": "no_terminal_found"}

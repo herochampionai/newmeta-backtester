@@ -14,8 +14,10 @@ Key facts I got wrong before:
   7. Confluence filter requires MACD bullish AND Stoch bullish (and not extreme).
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

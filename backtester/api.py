@@ -13,14 +13,13 @@ Endpoints:
     GET  /health               Health check
 """
 from __future__ import annotations
-import json
+
 import sys
 import traceback
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -28,13 +27,11 @@ from pydantic import BaseModel
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from data.live_fetcher import fetch_with_priority
-from data.mt5_export import resolve_terminal
-from backtester.engine_full import run_full, GRID_NONE
-from backtester.grid_recovery import GRID_LOSS_AND_PROFIT
-from strategies import STRATEGY_REGISTRY, TRADABLE_STRATEGY_REGISTRY, COMPOSITE_STRATEGY_REGISTRY
-from core.regime import RegimeAwareStrategy
+from backtester.engine_full import run_full
 from core.loader import load_any_strategy
+from core.regime import RegimeAwareStrategy
+from data.live_fetcher import fetch_with_priority
+from strategies import COMPOSITE_STRATEGY_REGISTRY, STRATEGY_REGISTRY, TRADABLE_STRATEGY_REGISTRY
 
 app = FastAPI(title="Newmeta Backtester API", version="1.0")
 app.add_middleware(
@@ -156,7 +153,7 @@ def run_backtest(req: BacktestRequest):
 def optimize(req: BacktestRequest, n_trials: int = 50):
     try:
         df, info = _fetch_data(req.symbol, req.timeframe, req.start, req.end, req.mt5_terminal)
-        from analysis.optuna_optimizer import optimize_strategy, best_params
+        from analysis.optuna_optimizer import best_params, optimize_strategy
         spec_path = ROOT / "config" / "strategies.yaml"
         import yaml
         all_specs = yaml.safe_load(spec_path.read_text())

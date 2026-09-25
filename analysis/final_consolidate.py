@@ -12,9 +12,12 @@ Outputs:
   - Final consolidated report
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
 from pathlib import Path
+
 import pandas as pd
 
 from analysis.optuna_filters import fetch_h1
@@ -49,7 +52,7 @@ def load_all_winners():
                         "params": params,
                         "source": f"V1 Optuna ({f})",
                     })
-        except Exception as e:
+        except Exception:
             pass
 
     # V4 (macd_confluence_v4, bb_rsi_v4)
@@ -294,7 +297,7 @@ def main():
     }
     with open("output/FINAL_REPORT.json", "w") as f:
         json.dump(report, f, indent=2)
-    print(f"  Saved → output/FINAL_REPORT.json")
+    print("  Saved → output/FINAL_REPORT.json")
 
 
 if __name__ == "__main__":

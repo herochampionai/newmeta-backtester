@@ -14,8 +14,10 @@ V2 changes:
 Character: reversal with adaptive zones. Works on both FX and indices.
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

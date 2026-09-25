@@ -4,13 +4,12 @@ Handles: expiry calendar, volume/OI roll trigger, price adjustment (back-adjust)
 continuous contract stitching. Works with portfolio_runner for multi-asset.
 """
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Any
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import json
 
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
 
 EXPIRY_PATH = Path(__file__).parent.parent / "config" / "expiry_calendar.json"
 

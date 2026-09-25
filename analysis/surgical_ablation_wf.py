@@ -4,12 +4,14 @@ Runs 4 OOS windows (2024-Q1, Q2, Q3, Q4) for each of 8 configurations.
 Aggregates results across windows for robust verdict.
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_LOSS_AND_PROFIT, RECOVERY_HIGHER_PROFITS
@@ -17,7 +19,6 @@ from backtester.metrics_v2 import compute_all
 from core.surgical_features import SURGICAL_FEATURES, enable, get_feature_defaults
 from data.cache import load as load_cache
 from strategies import STRATEGY_REGISTRY
-
 
 SYMBOL = "EURUSD"
 TIMEFRAME = "H1"

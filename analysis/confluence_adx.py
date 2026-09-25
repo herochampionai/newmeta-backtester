@@ -4,33 +4,39 @@ Goal: improve robustness WITHOUT killing too many opportunities.
 Each filter is tested individually, then best ones combined.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import json
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+import pandas as pd
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
-from strategies.adx import ADX_Strategy
+from data.mt5_export import init_mt5
 from strategies._enhancement import (
     EnhancedStrategy,
-    # Old filters
-    regime_adx, session_filter, volatility_atr, candle_filter, mtf_trend,
+    elliott_wave_proxy,
+    force_pullback,
+    killzone_filter,
     # New confluence filters
-    market_context_pullback, force_pullback, pivot_points, zigzag_swings,
-    elliott_wave_proxy, regime_filter_advanced, vwap_distance, trend_strength,
-    confluence_score, fibonacci_levels, fvg_bullish, fvg_bearish,
-    ifvg_bullish, ifvg_bearish, mss_bullish, mss_bearish, killzone_filter,
-    volume_increase, momentum_increase, divergence_bullish, divergence_bearish,
+    market_context_pullback,
+    pivot_points,
+    # Old filters
+    regime_filter_advanced,
+    trend_strength,
+    vwap_distance,
+    zigzag_swings,
 )
+from strategies.adx import ADX_Strategy
 
 
 def fetch_h1(terminal, symbol, n_bars=20000):
@@ -177,7 +183,7 @@ def main():
          "nas_n": r["nas"].get("n_trades") if isinstance(r["nas"], dict) else None,
         } for r in results
     ]).to_csv("output/adx_confluence.csv", index=False)
-    print(f"\nSaved → output/adx_confluence.csv")
+    print("\nSaved → output/adx_confluence.csv")
 
 
 if __name__ == "__main__":

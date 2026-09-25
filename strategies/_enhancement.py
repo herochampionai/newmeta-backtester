@@ -26,15 +26,16 @@ Advanced confluence filters:
 Each filter returns (buy_keep, sell_keep) — bool Series that AND the base signals.
 """
 from __future__ import annotations
-from typing import Callable, Any
+
 import warnings
+from typing import Callable
+
 warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
-
 
 # ─── Filter primitives ────────────────────────────────────────────────────────
 
@@ -626,7 +627,7 @@ class EnhancedStrategy(BaseStrategy):
                 keep_buy, keep_sell = f(df)
                 buy = buy & keep_buy.fillna(False).astype(bool)
                 sell = sell & keep_sell.fillna(False).astype(bool)
-            except Exception as e:
+            except Exception:
                 pass  # If a filter fails, keep all signals (don't break the backtest)
         entries = buy | sell
         direction = pd.Series(np.where(buy, 1, np.where(sell, -1, 0)),

@@ -17,6 +17,7 @@ Exit codes:
     2 - data quality gate failed (intentional; user can override with --force)
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -81,10 +82,13 @@ def load_dukascopy(symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame 
     to OHLC and sums real tick volumes. Cached in data/cache/ as
     {SYM}_{TF}_duka_{hash}.parquet so re-runs are instant.
     """
-    from backtester.tick_pipeline import (
-        download_dukascopy_range, convert_bi5_to_parquet, load_ticks_parquet,
-    )
     import hashlib
+
+    from backtester.tick_pipeline import (
+        convert_bi5_to_parquet,
+        download_dukascopy_range,
+        load_ticks_parquet,
+    )
 
     sym = symbol.upper().replace("/", "")
     # Dukascopy feed uses a slash for metals (XAU/USD); 6-letter FX pairs are plain.
@@ -104,7 +108,7 @@ def load_dukascopy(symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame 
     ok = sum(1 for r in results if r.ok)
     print(f"  [data] downloaded {ok}/{len(results)} hourly files")
     if ok == 0:
-        print(f"  [data] Dukascopy returned nothing (bad symbol or blocked?)")
+        print("  [data] Dukascopy returned nothing (bad symbol or blocked?)")
         return None
 
     conv = convert_bi5_to_parquet(raw_dir, pq_dir, sym, partition_by="month")
@@ -115,7 +119,7 @@ def load_dukascopy(symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame 
 
     ticks = load_ticks_parquet(pq_dir, sym, start_s, end_s)
     if ticks is None or len(ticks) == 0:
-        print(f"  [data] no ticks loaded from parquet")
+        print("  [data] no ticks loaded from parquet")
         return None
 
     # Resample mid-price to OHLC, sum REAL volumes, mean spread
@@ -129,7 +133,7 @@ def load_dukascopy(symbol: str, timeframe: str, days: int = 90) -> pd.DataFrame 
     ohlc["spread_pips"] = ticks["spread"].resample(rule).mean() / _pip_size(symbol)
     df = ohlc.dropna(subset=["open"])
     if len(df) == 0:
-        print(f"  [data] resample produced no bars")
+        print("  [data] resample produced no bars")
         return None
 
     # Cache in the standard OHLCV format (+spread_pips bonus for DQ spread profile)
@@ -280,6 +284,7 @@ def _make_strategy(strategy_name: str, params: dict):
         return ADX_Strategy(name="adx", params=params)
 
     import importlib
+
     from strategies._base import BaseStrategy
 
     def _norm(s: str) -> str:
@@ -321,18 +326,19 @@ def run_pipeline(args) -> int:
     start_time = time.time()
 
     # ---- Imports (lazy to keep --list-data fast) ----
-    from backtester.data_quality import analyze_data_quality, gate_check
-    from backtester.engine_full import run_full
-    from backtester.trade_journal_v2 import TradeJournal
-    from backtester.observability import MetricsRegistry, StructuredLogger
-    from analysis.walkforward_v2 import walk_forward_v2
+    from analysis.adversarial_stress import run_stress_test
     from analysis.parameter_sensitivity import analyze_parameter_sensitivity
     from analysis.stat_tests import compare_strategies
     from analysis.statistical_significance import (
-        probabilistic_sharpe_ratio, deflated_sharpe_ratio,
+        deflated_sharpe_ratio,
+        probabilistic_sharpe_ratio,
     )
-    from analysis.adversarial_stress import run_stress_test
+    from analysis.walkforward_v2 import walk_forward_v2
+    from backtester.data_quality import analyze_data_quality, gate_check
+    from backtester.engine_full import run_full
+    from backtester.observability import MetricsRegistry, StructuredLogger
     from backtester.portfolio import MultiCurrencyPortfolio
+    from backtester.trade_journal_v2 import TradeJournal
 
     # ---- 0. Observability setup ----
     run_ts = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
@@ -345,7 +351,7 @@ def run_pipeline(args) -> int:
     # Reproducibility: one seed for every stochastic stage (tuner, WF,
     # Sobol, bootstrap). Recorded in report["repro"] with the data
     # fingerprint so reruns are provably comparable.
-    from backtester.repro import resolve_seed, set_global_seed, data_fingerprint
+    from backtester.repro import data_fingerprint, resolve_seed, set_global_seed
     seed = set_global_seed(resolve_seed(getattr(args, "seed", None)))
     print(f"Seed: {seed} (override with --seed or NEWMETA_SEED)")
     # Consolidated report artifact (IMP-2): every stage records here,
@@ -390,7 +396,7 @@ def run_pipeline(args) -> int:
           f"Stale days: {dq.stale.days_since_last:.0f}")
     registry.gauge("dq_grade_score").set(ord(dq.grade))
     if not gate["passed"] and not args.force:
-        print(f"  Data quality gate failed. Use --force to override.")
+        print("  Data quality gate failed. Use --force to override.")
         return 2
 
     # ---- 3. Backtest with user params ----
@@ -512,7 +518,7 @@ def run_pipeline(args) -> int:
             "failed": wf.failed_count, "verdict": wf.overall_verdict,
         }
     else:
-        print(f"  SKIPPED (no numeric params to vary)")
+        print("  SKIPPED (no numeric params to vary)")
         report["stages"]["walkforward"] = {"skipped": "no numeric params"}
 
     # ---- 4b. R024 Auto-iterate: OVERFIT -> shrink bounds -> WF again ----
@@ -595,7 +601,7 @@ def run_pipeline(args) -> int:
             # Result has 'importance_ranking' with {param, total_importance} per param.
             ranking = sens.get("importance_ranking", [])
             sobol = sens.get("sobol", {})
-            print(f"  Total-order indices (Sobol ST):")
+            print("  Total-order indices (Sobol ST):")
             for row in ranking:
                 name = row.get("param", "?")
                 ti = row.get("total_importance", 0)
@@ -609,7 +615,7 @@ def run_pipeline(args) -> int:
                 for i, r in enumerate(ranking)
             }
         else:
-            print(f"  SKIPPED (no numeric params)")
+            print("  SKIPPED (no numeric params)")
     else:
         print("\n[5/8] R010 Parameter Sensitivity: SKIPPED (--skip-sensitivity)")
         report["stages"]["sensitivity"] = {"skipped": "--skip-sensitivity"}
@@ -711,7 +717,7 @@ def run_pipeline(args) -> int:
             "var_method": pm.var_method,
         }
     else:
-        print(f"  Portfolio: SKIPPED (no trade returns)")
+        print("  Portfolio: SKIPPED (no trade returns)")
         report["stages"]["portfolio"] = {"skipped": "no trade returns"}
 
     journal = TradeJournal(run_id=report["run_id"])

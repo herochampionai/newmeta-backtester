@@ -3,13 +3,14 @@
 Unified interface: same signal→order path as backtest, just live data.
 """
 from __future__ import annotations
+
 import asyncio
 import json
 import threading
 import time
-from dataclasses import dataclass
-from typing import Callable, Any
 from collections import deque
+from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass
@@ -43,8 +44,9 @@ class MT5LiveFeed:
 
     def _run(self):
         try:
-            from data.mt5_export import resolve_terminal, init_mt5
             import MetaTrader5 as mt5
+
+            from data.mt5_export import init_mt5, resolve_terminal
             t = self.terminal or resolve_terminal()
             if not t or not init_mt5(t):
                 return

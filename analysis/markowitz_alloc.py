@@ -1,10 +1,11 @@
 """Portfolio allocation: Markowitz (Ledoit-Wolf shrunk), risk-parity, Kelly, equal.
 Inputs: per-strategy daily returns DataFrame. Output: weight vector + portfolio stats."""
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
-from sklearn.covariance import LedoitWolf
 from scipy.optimize import minimize
+from sklearn.covariance import LedoitWolf
 
 
 def _to_daily(bar_returns: pd.DataFrame, bars_per_day: int = 24) -> pd.DataFrame:

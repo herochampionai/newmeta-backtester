@@ -1,9 +1,12 @@
 """Adaptive ADX v2 - focused Optuna."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies.top5_research import AdaptiveADXStrategy

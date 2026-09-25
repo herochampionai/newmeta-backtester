@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from data.cache import list_cache  # noqa: E402
 from data.cache import load as load_cache  # noqa: E402
-from data.yahoo_fallback import YAHOO_MAP, INTERVAL_MAP
+from data.yahoo_fallback import INTERVAL_MAP, YAHOO_MAP
 
 _CRYPTO_YAHOO_MAP = {
     "BTCUSDT": "BTC-USD",
@@ -85,8 +85,9 @@ def _try_yahoo(symbol: str, timeframe: str, start: str, end: str | None) -> pd.D
         df.index = pd.to_datetime(df.index, utc=True)
         df = df[["open", "high", "low", "close", "volume"]]
         # Cache to parquet
-        from data.cache import write as cache_write
         import hashlib
+
+        from data.cache import write as cache_write
         sha = hashlib.sha256(f"{symbol}_{timeframe}_{start}_{end or 'now'}".encode()).hexdigest()[:12]
         meta = {"symbol": symbol, "timeframe": timeframe, "sha": sha,
                 "source": "yahoo", "start": start, "end": end or "now"}

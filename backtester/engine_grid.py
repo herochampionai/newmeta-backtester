@@ -1,19 +1,17 @@
 """Backtest engine that wraps vectorbt with grid/recovery simulation.
 Use this for accurate EA-equivalent backtests that include grid + recovery modes."""
 from __future__ import annotations
-import pandas as pd
-import numpy as np
-import vectorbt as vbt
 
-from backtester.metrics_v2 import compute_all
+import pandas as pd
+
+from backtester.analytics import annual_trade_count, strategy_scoreboard, streak_stats
 from backtester.grid_recovery import (
-    GridRecoveryManager, GRID_NONE, GRID_LOSS, GRID_PROFIT, GRID_LOSS_AND_PROFIT,
-    RECOVERY_NONE, RECOVERY_LAST_CLOSING, RECOVERY_HIGHER_PROFITS,
+    GRID_LOSS_AND_PROFIT,
+    RECOVERY_NONE,
+    GridRecoveryManager,
 )
-from backtester.adaptive import AdaptiveSizer, AdaptiveConfig
-from backtester.swaps import compute_swap_series
-from backtester.analytics import streak_stats, annual_trade_count, strategy_scoreboard
-from core.surgical_features import is_enabled, get_feature_params
+from backtester.metrics_v2 import compute_all
+from core.surgical_features import get_feature_params, is_enabled
 
 
 def run_grid(df: pd.DataFrame,

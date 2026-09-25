@@ -18,10 +18,11 @@ Usage:
     print(rep.best_per_strategy)
 """
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+
 import json
 import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 
 def discover_symbols(timeframe: str = "H1") -> list[str]:
@@ -73,9 +74,11 @@ def _load_cached(symbol: str, timeframe: str, min_bars: int = 200):
 def _screen_cell(job: tuple) -> dict:
     """One strategy x symbol cell. Module-level so workers can pickle it."""
     strategy_name, params, symbol, timeframe, capital, exec_cfg, min_bars = job
-    import pandas as pd
-    from backtester.engine_full import run_full
     import importlib
+
+    import pandas as pd
+
+    from backtester.engine_full import run_full
     from strategies._base import BaseStrategy
 
     t0 = time.time()

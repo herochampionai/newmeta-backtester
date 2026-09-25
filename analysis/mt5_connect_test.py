@@ -1,9 +1,10 @@
 """Connect to running MT5 and run the strategy tester programmatically."""
 import warnings; warnings.filterwarnings('ignore')
 import sys
+
 sys.path.insert(0, '.')
 import os
-import time
+
 import MetaTrader5 as mt5
 import pandas as pd
 
@@ -35,7 +36,7 @@ for path in paths_to_try:
             connected = True
             break
         else:
-            print(f"  Initialized but NOT connected")
+            print("  Initialized but NOT connected")
             mt5.shutdown()
 
 if not connected:

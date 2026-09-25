@@ -1,6 +1,7 @@
 """Comprehensive metrics — every metric a quant cares about.
 Returns dict, easy to render as cards in Streamlit."""
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 

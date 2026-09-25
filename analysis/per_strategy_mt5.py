@@ -8,23 +8,23 @@ Compares pure (no grid) vs GRID_LOSS_AND_PROFIT for each strategy.
 Uses corrected metrics (PF cap 99 instead of 999 sentinel).
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
-
 import MetaTrader5 as mt5
+import pandas as pd
 
-from data.mt5_export import init_mt5
 from backtester.engine_full import run_full
-from backtester.grid_recovery import GRID_NONE, GRID_LOSS_AND_PROFIT, RECOVERY_HIGHER_PROFITS
+from backtester.grid_recovery import GRID_LOSS_AND_PROFIT, GRID_NONE, RECOVERY_HIGHER_PROFITS
 from backtester.metrics_v2 import compute_all
-from strategies import MULTI_STRAT_EA_REGISTRY, CRYPTO_STRAT_EA_REGISTRY
-
+from data.mt5_export import init_mt5
+from strategies import CRYPTO_STRAT_EA_REGISTRY, MULTI_STRAT_EA_REGISTRY
 
 # MT5 TwelveStrategies EA — verified mapping (12 strategies)
 # Base (in TwelveStrategies.mq5): AC+AO, ADX, DeM, FBB, MFI, MS

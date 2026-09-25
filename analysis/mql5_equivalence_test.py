@@ -17,23 +17,21 @@ Usage:
     python -m analysis.mql5_equivalence_test --strategy fbb --data EURUSD_H1 --harness-only
 """
 from __future__ import annotations
+
 import argparse
 import json
 import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from data.live_fetcher import fetch_with_priority
-from data.mt5_export import resolve_terminal
-from analysis.mt5_trade_parser import parse_mt5_deals_csv
-from core.loader import load_any_strategy
-from backtester.engine_full import run_full, GRID_NONE
 from analysis.mql5_compare import MQL5_DEFAULTS, compare
+from analysis.mt5_trade_parser import parse_mt5_deals_csv
+from backtester.engine_full import GRID_NONE, run_full
+from data.live_fetcher import fetch_with_priority
 
 
 def run_equivalence(strategy_name: str, df: pd.DataFrame,

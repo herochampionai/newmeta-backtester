@@ -11,8 +11,10 @@ R004 enhancements over basic walk_forward:
 Backward compat: walk_forward() and wf_summary() from analysis.walkforward still work.
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+
+from dataclasses import dataclass
+from typing import Callable, Optional
+
 import numpy as np
 import pandas as pd
 
@@ -144,8 +146,9 @@ def _optimize_on_train(
 ) -> tuple[dict, float]:
     """Run Optuna on train window, return (best_params, best_score)."""
     import optuna
-    from strategies import STRATEGY_REGISTRY
+
     from backtester.engine_full import run_full
+    from strategies import STRATEGY_REGISTRY
 
     # Suppress Optuna logging unless verbose
     if not verbose:
@@ -296,8 +299,8 @@ def walk_forward_v2(
 
         # Score on test
         try:
-            from strategies import STRATEGY_REGISTRY
             from backtester.engine_full import run_full
+            from strategies import STRATEGY_REGISTRY
             cls = STRATEGY_REGISTRY[strategy_name]
             strat = cls(params=best_params)
             sig_tr = strat.generate(df_train)
@@ -481,8 +484,8 @@ def wf_param_stability_heatmap_data(report: WFReport) -> dict:
 
 if __name__ == "__main__":
     # Quick self-test
-    import pandas as pd
     import numpy as np
+    import pandas as pd
 
     # Generate test data with a known regime
     idx = pd.date_range("2020-01-01", periods=3000, freq="h", tz="UTC")
@@ -508,5 +511,5 @@ if __name__ == "__main__":
     print(f"Aggregate: {report.aggregate}")
     print(f"Passed: {report.passed_count}, Failed: {report.failed_count}")
     print(f"Verdict: {report.overall_verdict}")
-    print(f"Param stability:")
+    print("Param stability:")
     print(report.param_stability_dataframe())

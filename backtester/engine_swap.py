@@ -8,6 +8,7 @@ Honest semantics: only runs when swap_enabled=True. The flag in app.py / CLI
 controls whether swap is applied at all.
 """
 from __future__ import annotations
+
 import pandas as pd
 
 from backtester.swaps import compute_swap_series

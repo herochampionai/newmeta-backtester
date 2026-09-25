@@ -11,13 +11,14 @@ Tick-aware sub-bar simulation:
   intrabar volatility. This bridges the gap between bar-level backtests
   (QuantConnect LEAN at 1-min) and MT5 Strategy Tester tick models."""
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import vectorbt as vbt
 
-from backtester.metrics_v2 import compute_all
-from backtester.analytics import streak_stats, annual_trade_count, strategy_scoreboard
+from backtester.analytics import annual_trade_count, strategy_scoreboard, streak_stats
 from backtester.execution import pips_to_fee_rate, total_cost_pips
+from backtester.metrics_v2 import compute_all
 
 
 def infer_periods_per_year(df: pd.DataFrame, fallback: int = 252 * 24) -> int:

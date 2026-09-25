@@ -1,10 +1,13 @@
 """Direct final consolidation without imports of buggy script."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-from pathlib import Path
-import pandas as pd
 import importlib
+from pathlib import Path
+
+import pandas as pd
 
 OOS_2Y_START = pd.Timestamp('2024-09-17', tz='UTC')
 OOS_2Y_END = pd.Timestamp('2026-09-17', tz='UTC')

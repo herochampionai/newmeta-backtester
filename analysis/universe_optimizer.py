@@ -6,14 +6,16 @@ optionally runs Optuna per top-N combo. This replaces the heuristic-only
 ticker_scanner.suitability with real backtest ranking.
 """
 from __future__ import annotations
-import numpy as np
-import pandas as pd
+
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
+from analysis.composite_criterion import CRITERION_PRESETS
 from backtester.engine_full import run_full
 from data.live_fetcher import fetch_with_priority
 from strategies import STRATEGY_REGISTRY
-from analysis.composite_criterion import CRITERION_PRESETS
 
 
 def _metrics_for(strategy_name: str, df: pd.DataFrame, params: dict,
@@ -129,7 +131,7 @@ def apply_multiple_testing_correction(
         - significant: whether combo survives multiple testing
         - correction_method: which method was used
     """
-    from analysis.statistical_significance import bonferroni_correction, benjamini_hochberg
+    from analysis.statistical_significance import benjamini_hochberg, bonferroni_correction
     if ranked is None or len(ranked) == 0:
         return ranked
 

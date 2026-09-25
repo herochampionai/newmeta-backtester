@@ -10,9 +10,10 @@ From SCreener + Setups.txt:
 These are the user's standard params — not Optuna-tuned, so likely more robust.
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
-from . import indicators as ind
+
 from ._base import BaseStrategy, Signals
 
 

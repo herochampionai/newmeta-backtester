@@ -9,10 +9,11 @@ If a short_name is passed without canonical_name, generate() transparently renam
 This prevents silent-failure bugs from naming drift between callers and strategies.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
+
 import pandas as pd
-import numpy as np
 
 
 @dataclass

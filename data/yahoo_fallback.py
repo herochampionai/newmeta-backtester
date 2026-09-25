@@ -1,6 +1,7 @@
 """Yahoo Finance fallback when MT5 is unavailable. Lower-quality but works for
 sanity checks. Note: Yahoo may not have all FX pairs beyond majors."""
 from __future__ import annotations
+
 import pandas as pd
 
 # Yahoo ticker mapping for FX pairs

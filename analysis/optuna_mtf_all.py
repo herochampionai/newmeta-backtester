@@ -1,21 +1,31 @@
 """Optuna + 2-year OOS validation for ALL 12 MTF strategies."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from pathlib import Path
 
 from analysis.optuna_filters import fetch_h1, run_strategy
 from strategies.mtf_framework import (
-    MTFAC_AO, MTFADX, MTFDeM, MTFFBB, MTFMFI, MTFMS,
-    MTFMTF_Stoch, MTFBB_RSI, MTFTriple_RSI, MTFQuad_Stoch,
-    MTFStoch533, MTFMACD_Confluence,
+    MTFAC_AO,
+    MTFADX,
+    MTFBB_RSI,
+    MTFFBB,
+    MTFMFI,
+    MTFMS,
+    MTFDeM,
+    MTFMACD_Confluence,
+    MTFMTF_Stoch,
+    MTFQuad_Stoch,
+    MTFStoch533,
+    MTFTriple_RSI,
 )
-
 
 MTF_CLASSES = {
     "mtf_ac_ao": MTFAC_AO,

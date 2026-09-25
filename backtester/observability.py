@@ -18,14 +18,16 @@ Usage:
     alerts.add_rule("dd_breach", lambda m: m.gauge("drawdown_pct").value() > 0.25, "critical", "Drawdown > 25%")
 """
 from __future__ import annotations
+
 import json
-import time
 import threading
-from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional, Callable, Any
+import time
+from dataclasses import dataclass
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from typing import Callable, Optional
+
 import numpy as np
 
 
@@ -469,9 +471,9 @@ if __name__ == "__main__":
     print(f"API started at {url}")
     import urllib.request
     try:
-        resp = urllib.request.urlopen(f"http://127.0.0.1:8765/").read()
+        resp = urllib.request.urlopen("http://127.0.0.1:8765/").read()
         print(f"GET /: {resp.decode()[:100]}")
-        resp = urllib.request.urlopen(f"http://127.0.0.1:8765/metrics.json").read()
+        resp = urllib.request.urlopen("http://127.0.0.1:8765/metrics.json").read()
         print(f"GET /metrics.json: {resp.decode()[:100]}")
     finally:
         api.stop()

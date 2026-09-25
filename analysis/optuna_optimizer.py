@@ -3,16 +3,15 @@ Searches parameter space per strategy with Bayesian TPE sampling.
 100-500x faster than MT5 Strategy Tester via vectorized in-memory execution.
 """
 from __future__ import annotations
-from pathlib import Path
-import json
-import optuna
-import numpy as np
-import pandas as pd
-from typing import Callable, Any
 
+from typing import Any, Callable
+
+import numpy as np
+import optuna
+import pandas as pd
+
+from backtester.engine_full import run_full
 from strategies import STRATEGY_REGISTRY
-from backtester.engine_full import run_full, GRID_NONE
-from backtester.metrics_v2 import compute_all
 
 
 def _sample_param(trial: optuna.Trial, key: str, cfg: Any) -> Any:
@@ -76,10 +75,10 @@ def optimize_strategy_criterion(
     """
     study_name = study_name or f"opt_{getattr(strategy_obj_or_cls, 'name', 'strat')}"
     optuna.logging.set_verbosity(optuna.logging.WARNING)
-    
+
     fixed = dict(fixed_params or {})
     eng_kwargs = dict(engine_kwargs or {})
-    
+
     if isinstance(strategy_obj_or_cls, str):
         cls = STRATEGY_REGISTRY[strategy_obj_or_cls]
         strat_name = strategy_obj_or_cls
@@ -94,23 +93,23 @@ def optimize_strategy_criterion(
         sampled = {}
         for k, v in param_spec.items():
             sampled[k] = _sample_param(trial, k, v)
-        
+
         merged_params = {**fixed, **sampled}
-        
+
         try:
             strat = cls(params=merged_params)
             sig = strat.generate(df)
             entries = sig.entries.fillna(False).astype(bool)
             direction_series = pd.Series(sig.direction, index=df.index).fillna(0).astype(int)
-            
+
             signals = {strat_name: (entries, direction_series)}
             result = run_full(df, signals, **eng_kwargs)
             metrics = result.get("metrics", {})
-            
+
             score = criterion_fn(metrics)
             if not np.isfinite(score):
                 return -1e9 if direction == "maximize" else 1e9
-            
+
             trial.set_user_attr("metrics", {
                 "sharpe": metrics.get("sharpe", 0.0),
                 "calmar": metrics.get("calmar", 0.0),
@@ -149,7 +148,7 @@ def get_study_trials_df(study: optuna.Study) -> pd.DataFrame:
         for pk, pv in t.params.items():
             row[pk] = pv
         rows.append(row)
-    
+
     if not rows:
         return pd.DataFrame()
     df_trials = pd.DataFrame(rows).sort_values("score", ascending=False)

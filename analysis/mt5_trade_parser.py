@@ -1,10 +1,11 @@
 """Parse MT5 strategy tester trade export (CSV) and pair entry/exit deals into round-trip trades.
 Output format matches what the Python harness produces."""
 from __future__ import annotations
+
 import re
 from pathlib import Path
+
 import pandas as pd
-import numpy as np
 
 
 def parse_mt5_deals_csv(csv_path: str | Path) -> pd.DataFrame:
@@ -61,7 +62,6 @@ def parse_mt5_deals_csv(csv_path: str | Path) -> pd.DataFrame:
 def parse_mt5_html_report(html_path: str | Path) -> pd.DataFrame:
     """Parse MT5 strategy tester HTML report (Deals tab).
     Less reliable than CSV — CSV export is preferred."""
-    from html.parser import HTMLParser
     text = Path(html_path).read_text(encoding="utf-8", errors="replace")
     # Find the Deals table rows: <tr><td>time</td><td>type</td>...
     # Use regex to grab each row

@@ -17,10 +17,8 @@ This module computes the swap cost/credit per bar based on:
   - Date (Wed = 3x, holiday = 0)
 """
 from __future__ import annotations
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
 
+import pandas as pd
 
 # Standard FX swap holidays (approx — broker-specific)
 SWAP_HOLIDAYS_2024_2025 = {

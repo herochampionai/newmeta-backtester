@@ -17,8 +17,10 @@ Params:
   divergence_lookback=30, require_divergence=False
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 from .triple_rsi import _detect_divergence

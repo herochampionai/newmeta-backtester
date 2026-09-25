@@ -1,8 +1,8 @@
 """Wait for MT5 tester results and read them."""
 import warnings; warnings.filterwarnings('ignore')
-import os, sys, time, json
-from pathlib import Path
+import time
 from datetime import datetime
+from pathlib import Path
 
 cache_dir = Path(r'C:\Users\youha\AppData\Roaming\MetaQuotes\Terminal\6D35BF1728C0CA7D99E1A54264C3585C\Tester\cache')
 tester_logs = Path(r'C:\Users\youha\AppData\Roaming\MetaQuotes\Terminal\6D35BF1728C0CA7D99E1A54264C3585C\Tester\logs')

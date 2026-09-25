@@ -12,12 +12,11 @@ Usage:
     portfolio = aggregate_portfolio_greeks([{"type": "call", ...}, {"type": "put", ...}])
 """
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Optional
-import math
-from scipy.stats import norm
-import numpy as np
 
+import math
+from dataclasses import dataclass
+
+from scipy.stats import norm
 
 # Simplified CME futures initial margin (per contract, USD)
 # contract_multiplier = notional $ per 1.0 point move per contract

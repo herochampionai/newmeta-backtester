@@ -4,29 +4,39 @@ Tries multiple enhancement combinations on AC-AO across EURUSD + NAS100.
 Goal: find combination that improves OOS performance without grid.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
-from strategies import MULTI_STRAT_EA_REGISTRY
-from strategies.ac_ao import AC_AO_Strategy
+from data.mt5_export import init_mt5
 from strategies._enhancement import (
-    EnhancedStrategy, regime_adx, session_filter, volatility_atr,
-    candle_filter, mtf_trend, volume_filter, day_filter, first_last_hour,
-    trend_persistence, rsi_filter, macd_confirm, bollinger_filter,
+    EnhancedStrategy,
+    bollinger_filter,
+    candle_filter,
+    macd_confirm,
+    mtf_trend,
+    regime_adx,
+    rsi_filter,
+    session_filter,
+    volatility_atr,
+    volume_filter,
 )
+from strategies.ac_ao import AC_AO_Strategy
 
 
 def fetch_h1(terminal: str, symbol: str, n_bars: int = 20000) -> pd.DataFrame:

@@ -7,12 +7,15 @@ Strategy: Use a hybrid approach:
 4. Read and display results
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, os, time, json
+import os
+import sys
+import time
+
 sys.path.insert(0, '.')
-import MetaTrader5 as mt5
-import pandas as pd
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import MetaTrader5 as mt5
 
 # =============================================================================
 # STEP 1: CONNECT TO MT5 AND VERIFY SETUP
@@ -76,13 +79,13 @@ print()
 print("  1. Open Strategy Tester: Ctrl+R (or View > Strategy Tester)")
 print()
 print("  2. Configure:")
-print(f"     Expert:     Multi Strat 2026\\Final8_EA")
-print(f"     Symbol:     EURUSD")
-print(f"     Period:     H1")
-print(f"     Date:       2024.09.17 - 2026.09.17")
-print(f"     Model:      Every tick (real ticks)")
-print(f"     Deposit:    100000")
-print(f"     Leverage:   500")
+print("     Expert:     Multi Strat 2026\\Final8_EA")
+print("     Symbol:     EURUSD")
+print("     Period:     H1")
+print("     Date:       2024.09.17 - 2026.09.17")
+print("     Model:      Every tick (real ticks)")
+print("     Deposit:    100000")
+print("     Leverage:   500")
 print()
 print("  3. Click 'Start'")
 print()
@@ -160,19 +163,19 @@ print("COMPARISON: Python predictions vs MT5 EA results")
 print("=" * 80)
 print()
 print("Python predictions (from Final 8 v1.4 backtests):")
-print(f"  ADX EUR (v3 loosened): T $5,893 / V $5,230")
-print(f"  ADX EUR (v2 loosened): T $7,369 / V $5,364")
-print(f"  Linda MACD EUR:       T $1,289 / V $180")
-print(f"  Regime Engine v3:     T $1,173 / V $1,221")
+print("  ADX EUR (v3 loosened): T $5,893 / V $5,230")
+print("  ADX EUR (v2 loosened): T $7,369 / V $5,364")
+print("  Linda MACD EUR:       T $1,289 / V $180")
+print("  Regime Engine v3:     T $1,173 / V $1,221")
 print()
 print("MT5 EA results would include:")
-print(f"  - Trade-by-trade PnL")
-print(f"  - Drawdown")
-print(f"  - Sharpe ratio")
-print(f"  - Win rate")
+print("  - Trade-by-trade PnL")
+print("  - Drawdown")
+print("  - Sharpe ratio")
+print("  - Win rate")
 print()
-print(f"Note: The MT5 EA uses your input parameters. If they match the Python")
-print(f"      backtest, results should be within ±$20-50 of each other.")
+print("Note: The MT5 EA uses your input parameters. If they match the Python")
+print("      backtest, results should be within ±$20-50 of each other.")
 print()
 
 # Try to read the .tst file as text (may be encoded)

@@ -1,16 +1,18 @@
 """Optuna search for V4 trend-following strategies."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 from analysis.optuna_filters import fetch_h1, run_strategy
-from strategies.trend_follow_v4 import TripleRSIV4Strategy, Stoch533V4
+from strategies.trend_follow_v4 import Stoch533V4, TripleRSIV4Strategy
 
 
 def search_v4(strategy_name, cls, df_oos1, df_oos2, market_profile, n_trials=40):
@@ -81,23 +83,23 @@ def main():
             def fmt(m):
                 if isinstance(m, dict) and "error" not in m:
                     return f"${m['net_pnl']:>+8,.0f} Sharpe {m['sharpe']:+.2f} ({m['n_trades']} trades)"
-                return f"ERR"
+                return "ERR"
             print(f"      OOS-1: {fmt(m1)}")
             print(f"      OOS-2: {fmt(m2)}")
             if isinstance(m1, dict) and isinstance(m2, dict) and "error" not in m1 and "error" not in m2:
                 if m1["net_pnl"] > 0 and m2["net_pnl"] > 0:
-                    print(f"      STATUS: ✓✓ ROBUST (profitable both)")
+                    print("      STATUS: ✓✓ ROBUST (profitable both)")
                 elif m1["net_pnl"] > 0 or m2["net_pnl"] > 0:
-                    print(f"      STATUS: ~ borderline")
+                    print("      STATUS: ~ borderline")
                 else:
-                    print(f"      STATUS: ✗ still failing")
+                    print("      STATUS: ✗ still failing")
             summary[key] = {"params": params, "score": score, "m1": m1, "m2": m2}
 
     # Save best params
     out = {k: {"params": v["params"]} for k, v in summary.items()}
     with open("output/v4_best_params.json", "w") as f:
         json.dump(out, f, indent=2)
-    print(f"\nSaved → output/v4_best_params.json")
+    print("\nSaved → output/v4_best_params.json")
 
 
 if __name__ == "__main__":

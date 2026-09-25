@@ -15,10 +15,12 @@ Usage:
     report = attribution.report()
 """
 from __future__ import annotations
+
 import json
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
+
 import numpy as np
 import pandas as pd
 
@@ -362,7 +364,7 @@ def regime_conditioned_metrics(returns: pd.DataFrame, weights: np.ndarray | None
                     "ann_vol": round(float(ret.std() * np.sqrt(252)), 4),
                 })
         return pd.DataFrame(rows)
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -394,7 +396,7 @@ def export_attribution_report(report: AttributionReport, out_path: str | Path) -
     brinson_html = ""
     if report.brinson:
         b = report.brinson
-        brinson_html = f"<div class='card'><h3>💼 Brinson Attribution</h3>"
+        brinson_html = "<div class='card'><h3>💼 Brinson Attribution</h3>"
         brinson_html += f"<p>Allocation: <b>{b.total_allocation_effect:+.4f}</b></p>"
         brinson_html += f"<p>Selection: <b>{b.total_selection_effect:+.4f}</b></p>"
         brinson_html += f"<p>Interaction: <b>{b.total_interaction_effect:+.4f}</b></p></div>"

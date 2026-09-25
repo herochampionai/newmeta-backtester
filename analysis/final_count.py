@@ -1,5 +1,4 @@
 """Final deployable count + cross-validation summary."""
-import json
 
 # ROBUST singles (already validated)
 robust_singles = {
@@ -24,7 +23,7 @@ print()
 print('ROBUST SINGLES (5 algorithms, 7 profiles):')
 for i, (algo, profiles) in enumerate(robust_singles.items(), 1):
     print(f'  {i}. {algo:30s} profiles: {", ".join(profiles)}')
-print(f'  → 5 unique algorithms')
+print('  → 5 unique algorithms')
 print()
 print('NEW POTENTIAL ROBUST MERGES (found this session):')
 for i, m in enumerate(merges, 6):
@@ -33,7 +32,7 @@ for i, m in enumerate(merges, 6):
     print(f'  {i}. {m["name"]:50s} {flag} {wr_flag}')
     print(f'     T ${m["tuning"]:+} / V ${m["val"]:+} / {m["trades"]} trades — {m["verdict"]}')
 print()
-print(f'TOTAL candidates: 5 singles + 3 merges = 8')
+print('TOTAL candidates: 5 singles + 3 merges = 8')
 print()
 print('VERDICT:')
 print('  - 5 ROBUST singles: confirmed deployable')

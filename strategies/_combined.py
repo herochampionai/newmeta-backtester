@@ -1,8 +1,9 @@
 """CombinedStrategy — AND-gate of two strategies. Both must signal same direction to enter."""
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
-from . import indicators as ind
+
 from ._base import BaseStrategy, Signals
 
 

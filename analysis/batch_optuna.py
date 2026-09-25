@@ -17,38 +17,35 @@ For each:
   3. Mark as ACCEPTED if profitable on BOTH, else borderline
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 import json
 
-import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
-from backtester.engine_full import run_full
-from backtester.grid_recovery import GRID_NONE
-from backtester.metrics_v2 import compute_all
-from strategies._enhancement import EnhancedStrategy
 from analysis.optuna_filters import (
-    FILTER_CATALOG, fetch_h1, run_strategy, search_strategy,
+    fetch_h1,
+    run_strategy,
+    search_strategy,
 )
-
+from strategies.bb_rsi import BBRsiStrategy
 from strategies.fbb import FBB_Strategy
+from strategies.macd_confluence import MACDConfluenceStrategy
 from strategies.mfi import MFI_Strategy
 from strategies.ms import MS_Strategy
 from strategies.mtf_stoch import QuadStochStrategy
-from strategies.bb_rsi import BBRsiStrategy
-from strategies.triple_rsi import TripleRSIStrategy
 from strategies.quad_stoch import QuadStochSameTF
 from strategies.stoch533_mtf import Stoch533MTF
-from strategies.macd_confluence import MACDConfluenceStrategy
-
+from strategies.triple_rsi import TripleRSIStrategy
 
 # Param space per strategy — sensible ranges for each
 PARAM_SPACES = {
@@ -221,9 +218,9 @@ def main():
         print(f"{s['strategy']:<22} {e_st:>15} {n_st:>15} {ovr:<20}")
 
     # Combined table including AC-AO and ADX
-    print(f"\n  (Plus AC-AO and ADX from earlier)")
-    print(f"  AC-AO:   EUR ✓ ACCEPTED (PnL +$353, Sharpe +0.80) | NAS ✗ borderline (-$635)")
-    print(f"  ADX:     EUR ~ borderline (OOS-1 great, OOS-2 flat) | NAS ✓ ACCEPTED (OOS-1 +$12k, OOS-2 +$9k)")
+    print("\n  (Plus AC-AO and ADX from earlier)")
+    print("  AC-AO:   EUR ✓ ACCEPTED (PnL +$353, Sharpe +0.80) | NAS ✗ borderline (-$635)")
+    print("  ADX:     EUR ~ borderline (OOS-1 great, OOS-2 flat) | NAS ✓ ACCEPTED (OOS-1 +$12k, OOS-2 +$9k)")
 
 
 if __name__ == "__main__":

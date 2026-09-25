@@ -1,9 +1,11 @@
 """Proper MT5 backtest: connect to running terminal and verify setup."""
 import warnings; warnings.filterwarnings('ignore')
-import os, sys
+import os
+import sys
+from datetime import datetime
+
 import MetaTrader5 as mt5
 import pandas as pd
-from datetime import datetime
 
 # Connect to running MT5
 mt5_path = r'D:\MT5_EuroPrinter\terminal64.exe'

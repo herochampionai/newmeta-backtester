@@ -5,21 +5,22 @@ Goal: establish which strategies are already profitable on which asset
 and identify weak ones for per-strategy enhancement.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
-
 import MetaTrader5 as mt5
+import pandas as pd
 
-from data.mt5_export import init_mt5
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
 from strategies import MULTI_STRAT_EA_REGISTRY
 
 

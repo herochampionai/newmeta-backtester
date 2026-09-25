@@ -12,20 +12,22 @@ Usage:
 from __future__ import annotations
 import warnings; warnings.filterwarnings('ignore')
 import sys
+
 sys.path.insert(0, '.')
 
 import argparse
 import json
-import pandas as pd
-import numpy as np
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+import numpy as np
+import pandas as pd
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
 
 
 def fetch_h1(term: str, sym: str, n_bars: int = 30000) -> pd.DataFrame:
@@ -54,7 +56,7 @@ def get_class(strategy_name: str):
     if strategy_name in v4_map:
         mod, cls_name = v4_map[strategy_name]
         return getattr(importlib.import_module(mod), cls_name)
-    from strategies import MULTI_STRAT_EA_REGISTRY, CRYPTO_STRAT_EA_REGISTRY
+    from strategies import CRYPTO_STRAT_EA_REGISTRY, MULTI_STRAT_EA_REGISTRY
     if strategy_name in MULTI_STRAT_EA_REGISTRY:
         return MULTI_STRAT_EA_REGISTRY[strategy_name]
     if strategy_name in CRYPTO_STRAT_EA_REGISTRY:
@@ -134,8 +136,8 @@ def main():
     print("=" * 100)
     print("PRODUCTION MULTI-INSTANCE RUNNER")
     print("=" * 100)
-    print(f"Each instance runs INDEPENDENTLY (single chart, single ticker, single timeframe)")
-    print(f"Multiple instances = multiple EA attachments on different charts")
+    print("Each instance runs INDEPENDENTLY (single chart, single ticker, single timeframe)")
+    print("Multiple instances = multiple EA attachments on different charts")
     print()
 
     # Load profiles

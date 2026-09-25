@@ -1,8 +1,10 @@
 """Monte Carlo robustness: bootstrap trade sequences to get confidence
 intervals on metrics. Also: parameter perturbation, regime shuffle."""
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from backtester.metrics import metrics_from_returns
 
 

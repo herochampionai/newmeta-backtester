@@ -14,8 +14,10 @@ SPLIT 2 of 2 — multi-timeframe 5/3/3:
 Precomputed columns htf_0_k..htf_3_k honoured if present.
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 from .triple_rsi import _detect_divergence

@@ -4,10 +4,10 @@ Runs strategy across multiple symbols simultaneously with shared equity,
 cross-margin, and proper currency conversion. Matches LEAN portfolio semantics.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any
+
 import pandas as pd
-import numpy as np
 
 from backtester.engine_full import run_full
 from backtester.symbol_spec import get_spec

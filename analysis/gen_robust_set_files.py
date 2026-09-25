@@ -3,10 +3,11 @@
 Plus a lenient Linda MACD variant.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
 from pathlib import Path
-import pandas as pd
 
 # Load best params for V1 strategies
 with open('output/adx_best_params.json') as f:
@@ -29,7 +30,7 @@ def gen_set(strategy_name, params, ticker, output_path, profile_metrics):
     """Generate MT5 .set file with header comments."""
     lines = []
     lines.append(f'; {strategy_name.upper()}_{ticker} — LOCKED PRODUCTION PROFILE')
-    lines.append(f'; Generated from 2-year OOS validation (robust on unseen period)')
+    lines.append('; Generated from 2-year OOS validation (robust on unseen period)')
     lines.append(f'; Net PnL: ${profile_metrics.get("net_pnl", 0):+,.0f}')
     lines.append(f'; Sharpe: {profile_metrics.get("sharpe", 0):+.2f}')
     lines.append(f'; WR: {profile_metrics.get("win_rate", 0)*100:.1f}%')
@@ -161,7 +162,7 @@ for strat, ticker in robust_v4:
                 json.dump(data, f, indent=2)
             print(f'  ✓ {strat}_{ticker}_production.json (Python-only, needs MQL5 porting)')
 
-print(f'\n=== DELIVERABLES ===')
+print('\n=== DELIVERABLES ===')
 print('MT5 .set files (load in Strategy Tester):')
 print('  output/set_files/adx_NAS.set — primary deployment')
 print('  output/set_files/adx_EUR.set — secondary deployment')

@@ -8,8 +8,10 @@ Edge #5: Ensemble (Trend30+Sweep20+VolExp25+Struct25, score>=75)
 Edge #6: Synthetic Order Flow (Range+Volume+Close position, Aggression Score)
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

@@ -1,7 +1,6 @@
 """Save the 8 final candidates — strongest 5 ON by default, 3 OFF by default."""
 import json
 from pathlib import Path
-import shutil
 
 # 5 ROBUST singles (strongest — ON by default)
 strong_5 = {

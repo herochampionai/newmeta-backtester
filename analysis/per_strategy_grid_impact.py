@@ -10,21 +10,22 @@ Output:
   Ranked by absolute PnL improvement with grid.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-import numpy as np
 
 from backtester.engine_full import run_full
-from backtester.grid_recovery import GRID_NONE, GRID_LOSS_AND_PROFIT, RECOVERY_HIGHER_PROFITS
+from backtester.grid_recovery import GRID_LOSS_AND_PROFIT, GRID_NONE, RECOVERY_HIGHER_PROFITS
 from backtester.metrics_v2 import compute_all
 from data.cache import load as load_cache
-from strategies import MULTI_STRAT_EA_REGISTRY, CRYPTO_STRAT_EA_REGISTRY
-
+from strategies import CRYPTO_STRAT_EA_REGISTRY, MULTI_STRAT_EA_REGISTRY
 
 SYMBOL = "EURUSD"
 TIMEFRAME = "H1"
@@ -96,7 +97,7 @@ def main():
     df, meta = load_cache(SYMBOL, TIMEFRAME)
     df_oos = df[df.index >= OOS_START].copy()
     print("=" * 100)
-    print(f"PER-STRATEGY: PURE vs GRID OVERLAY")
+    print("PER-STRATEGY: PURE vs GRID OVERLAY")
     print(f"Asset: {SYMBOL} {TIMEFRAME} | OOS: {df_oos.index[0].date()} → {df_oos.index[-1].date()} "
           f"({len(df_oos):,} bars)")
     print(f"Grid: GRID_LOSS_AND_PROFIT, TP=${GRID_KW['grid_take_profit']}, SL=${GRID_KW['grid_stop_loss']}, "

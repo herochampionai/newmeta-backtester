@@ -14,8 +14,9 @@ Output:
   - n_strategies_agreeing: pd.Series of int
 """
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 
 def confluence(directions: dict[str, pd.Series], weights: dict[str, float] | None = None,

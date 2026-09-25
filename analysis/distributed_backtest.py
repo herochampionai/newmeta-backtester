@@ -13,19 +13,18 @@ Usage:
     results = runner.run(jobs, job_fn, progress_callback=cb)
 """
 from __future__ import annotations
-import os
-import time
+
 import json
-import traceback
 import multiprocessing as mp
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
 # (CPython names it BrokenProcessPool, not *Error.)
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable, Any
 from datetime import datetime
-import pandas as pd
+from pathlib import Path
+from typing import Callable
 
 
 @dataclass
@@ -336,7 +335,7 @@ if __name__ == "__main__":
     runner = DistributedBacktest(n_workers=2, max_retries=1, heartbeat_sec=2)
     summary = runner.run(jobs, job_fn_path="analysis.distributed_backtest:sample_job_fn")
 
-    print(f"=== Distributed Run Summary ===")
+    print("=== Distributed Run Summary ===")
     print(f"Jobs: {summary.n_jobs}")
     print(f"Success: {summary.n_success}")
     print(f"Failed: {summary.n_failed}")
@@ -347,4 +346,4 @@ if __name__ == "__main__":
     print(f"Failed jobs (DLQ): {len(summary.failed_jobs)}")
 
     save_run_summary(summary, "output/distributed_run.json")
-    print(f"\nSaved: output/distributed_run.json")
+    print("\nSaved: output/distributed_run.json")

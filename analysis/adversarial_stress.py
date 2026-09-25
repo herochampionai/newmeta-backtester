@@ -14,13 +14,13 @@ Use cases:
 - Set realistic max position sizes
 """
 from __future__ import annotations
-import json
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Callable
+
 import numpy as np
 import pandas as pd
-
 
 # Historical crisis definitions (approximate dates and shock magnitudes)
 CRISIS_SCENARIOS = {
@@ -372,8 +372,8 @@ Survived: <b>{survived}/{survived+failed}</b> ({result.get('survival_rate', 0):.
 # ---------- Self-test ----------
 if __name__ == "__main__":
     import pandas as pd
+
     from backtester.engine_full import run_full
-    from analysis.composite_criterion import criterion_sharpe_only
     from strategies import STRATEGY_REGISTRY
 
     # Generate test data

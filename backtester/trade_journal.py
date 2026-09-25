@@ -9,11 +9,11 @@ Includes per-trade:
   - Market context (ADX, regime tag)
 """
 from __future__ import annotations
-import io
-from pathlib import Path
+
 from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
-import numpy as np
 
 
 def trades_to_dataframe(trades: pd.DataFrame, df_index: pd.DatetimeIndex) -> pd.DataFrame:

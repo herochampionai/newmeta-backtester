@@ -7,31 +7,43 @@ which filters to enable. This prevents overfit to naked params AND avoids
 filter overload.
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 import json
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
 from strategies._enhancement import (
     EnhancedStrategy,
-    regime_adx, session_filter, volatility_atr, candle_filter, mtf_trend,
-    market_context_pullback, force_pullback, pivot_points, zigzag_swings,
-    regime_filter_advanced, vwap_distance, trend_strength,
-    fibonacci_levels, killzone_filter, volume_increase, momentum_increase,
+    fibonacci_levels,
+    force_pullback,
+    killzone_filter,
+    market_context_pullback,
+    momentum_increase,
+    mtf_trend,
+    regime_filter_advanced,
+    session_filter,
+    trend_strength,
+    volatility_atr,
+    volume_increase,
+    vwap_distance,
+    zigzag_swings,
 )
-
 
 # Filter catalog — Optuna picks which to enable
 FILTER_CATALOG = {
@@ -208,11 +220,11 @@ def main():
         # Status
         if isinstance(m1, dict) and "error" not in m1 and isinstance(m2, dict) and "error" not in m2:
             if m1["net_pnl"] > 0 and m1["sharpe"] > 0 and m2["net_pnl"] > 0:
-                print(f"  STATUS: ✓ ACCEPTED (profitable on BOTH periods)")
+                print("  STATUS: ✓ ACCEPTED (profitable on BOTH periods)")
             elif m1["net_pnl"] > 0 or m2["net_pnl"] > 0:
-                print(f"  STATUS: ~ borderline (profitable on one period)")
+                print("  STATUS: ~ borderline (profitable on one period)")
             else:
-                print(f"  STATUS: ✗ needs more work")
+                print("  STATUS: ✗ needs more work")
 
     # Save
     with open("output/dem_best_params.json", "w") as f:
@@ -222,7 +234,7 @@ def main():
             "nas": {"params": nas_best_params,
                     "filters": [f.__name__ if hasattr(f, "__name__") else "lambda" for f in nas_best_filters]},
         }, f, indent=2)
-    print(f"\nSaved → output/dem_best_params.json")
+    print("\nSaved → output/dem_best_params.json")
 
 
 if __name__ == "__main__":

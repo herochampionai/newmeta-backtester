@@ -14,12 +14,15 @@ One position at a time; new entries while open are ignored.
 Fills at stop/target levels with slippage; commission per close.
 """
 from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
+
+from strategies import indicators as ind
 
 from . import adaptive as _ad
-from strategies import indicators as ind
 
 
 @dataclass

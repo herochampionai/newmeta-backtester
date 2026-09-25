@@ -23,7 +23,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -164,7 +163,7 @@ def _svg_histogram(values: list[float], *, bins: int = 24, width: int = 480,
                    color_win: str = "#00d4aa", title: str = "") -> str:
     """Inline SVG histogram — zero JS dependency. Bars are coloured by sign."""
     if not values:
-        return (f'<div class="empty-chart">No data</div>')
+        return ('<div class="empty-chart">No data</div>')
     arr = np.asarray([v for v in values if v is not None and not math.isnan(v)],
                      dtype=float)
     if arr.size == 0:
@@ -408,7 +407,7 @@ def generate_sexy_dashboard(metrics: dict,
                    _fmt_pct(_safe_float(metrics.get("cagr"))) + " CAGR",
                    colour=sharpe_colour),
         hero_card("Max Drawdown", f"{max_dd * 100:.2f}%",
-                   f"peak-to-trough", colour=dd_colour),
+                   "peak-to-trough", colour=dd_colour),
         hero_card("Win Rate", f"{win_rate * 100:.1f}%",
                    f"{wins}W / {losses}L", colour="#e8eaf0"),
     ]

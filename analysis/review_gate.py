@@ -27,7 +27,6 @@ Usage:
 """
 from __future__ import annotations
 
-
 DEFAULTS = {
     "min_trades": 30,
     "min_sharpe": 0.3,

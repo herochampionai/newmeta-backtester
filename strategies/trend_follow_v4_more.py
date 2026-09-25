@@ -11,8 +11,10 @@ This flips the paradigm: instead of "indicator at extreme = reversal", use
 "indicator aligned with trend = confirmation".
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 

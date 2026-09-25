@@ -15,8 +15,9 @@ References:
 - Lopez de Prado, M. (2018). "Advances in Financial Machine Learning".
 """
 from __future__ import annotations
+
 import math
-from typing import Optional
+
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats

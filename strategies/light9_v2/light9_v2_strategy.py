@@ -1,9 +1,10 @@
 """Auto-generated from MQL5 EA: LIGHT Primary - Professional Edition             | Ultimate Trading System                     |"""
 from __future__ import annotations
+
 import pandas as pd
-import numpy as np
+
 from .._base import BaseStrategy, Signals
-from ..indicators import adx, rsi, stochastic
+from ..indicators import adx, stochastic
 
 
 class Light9V2Strategy(BaseStrategy):

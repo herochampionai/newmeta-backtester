@@ -25,8 +25,10 @@ Entry (Pine base + score gate):
 Defaults match Pine v2.6 inputs. MACD 3/10/16, STC 12/26/50 x5, AO x0.3.
 """
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from . import indicators as ind
 from ._base import BaseStrategy, Signals
 from .triple_rsi import _detect_divergence

@@ -1,9 +1,12 @@
 """Linda MACD lenient — Optuna on 2Y OOS."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import fetch_h1, run_strategy
 from strategies.linda_macd_lenient import LindaMACDLenientStrategy
@@ -48,7 +51,7 @@ def main():
 
     with open('output/linda_macd_lenient_best.json', 'w') as f:
         json.dump(results, f, indent=2)
-    print(f"\nSaved → output/linda_macd_lenient_best.json")
+    print("\nSaved → output/linda_macd_lenient_best.json")
 
 
 if __name__ == "__main__":

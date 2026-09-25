@@ -114,7 +114,7 @@ with open(out, 'w') as f:
 print(f'Saved → {out}')
 print()
 print('SUMMARY:')
-print(f'  Total candidates: 8 (5 ON, 3 OFF)')
+print('  Total candidates: 8 (5 ON, 3 OFF)')
 print()
 print('LOOSENED WINNERS:')
 print(f'  ADX EUR:    T ${5893:,} / Sh {4.36:.2f} / WR 79.5% / 210 trades')

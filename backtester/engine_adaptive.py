@@ -14,9 +14,8 @@ are already computed by GridRecoveryManager. Adaptive primarily serves the grid
 engine for realistic martingale-aware sizing.
 """
 from __future__ import annotations
-import pandas as pd
 
-from backtester.adaptive import AdaptiveSizer, AdaptiveConfig
+from backtester.adaptive import AdaptiveConfig, AdaptiveSizer
 
 
 def apply_adaptive(result: dict,

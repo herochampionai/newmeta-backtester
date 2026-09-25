@@ -23,10 +23,11 @@ Usage:
     # run_bt(params, df_slice) -> metrics dict
 """
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+
 import json
 import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -60,7 +61,6 @@ class FineTuneReport:
 
 def _suggest(trial, space: dict) -> dict:
     """Map {name: (low, high, type)} to Optuna suggestions."""
-    import optuna
     params = {}
     for name, spec in space.items():
         low, high, typ = spec
@@ -157,8 +157,8 @@ def fine_tune(df, run_bt, space: dict, n_trials: int = 40, timeout: float | None
 
 # ---------- Self-test ----------
 if __name__ == "__main__":
-    import pandas as pd
     import numpy as np
+    import pandas as pd
     rng = np.random.default_rng(3)
 
     # Peak at period=14, noisy evaluations, train/test same shape.

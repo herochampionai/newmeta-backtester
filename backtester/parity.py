@@ -3,9 +3,9 @@
 Auto-fetches MT5 deals, runs same params through Newmeta, compares tick-for-tick.
 """
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
-from pathlib import Path
+import pandas as pd
 
 from backtester.engine_full import run_full
 from backtester.symbol_spec import get_spec
@@ -16,9 +16,11 @@ from strategies import STRATEGY_REGISTRY
 def fetch_mt5_deals(symbol: str, start: str, end: str, terminal: str | None = None) -> pd.DataFrame:
     """Pull MT5 deal history for exact comparison."""
     try:
-        from data.mt5_export import resolve_terminal, init_mt5
-        import MetaTrader5 as mt5
         from datetime import datetime
+
+        import MetaTrader5 as mt5
+
+        from data.mt5_export import init_mt5, resolve_terminal
         t = terminal or resolve_terminal()
         if not t or not init_mt5(t):
             return pd.DataFrame()

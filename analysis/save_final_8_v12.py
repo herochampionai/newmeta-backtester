@@ -10,10 +10,13 @@ Strategy:
 4. Save Final 8 v1.2 with current state and notes about NAS projection
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies.adx import ADX_Strategy
@@ -158,6 +161,7 @@ final_8_v12 = {
 
 # Save
 from pathlib import Path
+
 out = Path("output/final_8/Final_8_v1.2.json")
 out.parent.mkdir(parents=True, exist_ok=True)
 with open(out, 'w') as f:

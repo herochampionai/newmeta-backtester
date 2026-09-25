@@ -15,15 +15,14 @@ Usage:
     journal.export_csv("output/journal.csv")
 """
 from __future__ import annotations
-import json
-import hashlib
-from pathlib import Path
-from datetime import datetime
-from dataclasses import dataclass, field, asdict
-from typing import Optional
-import pandas as pd
-import numpy as np
 
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
 
 # Tax rules per jurisdiction (simplified — real tax is much more complex)
 TAX_RULES = {

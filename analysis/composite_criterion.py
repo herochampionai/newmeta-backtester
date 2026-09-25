@@ -6,17 +6,22 @@ R003: Includes Deflated Sharpe / PSR / multiple-testing-corrected criteria
 to prevent accepting over-optimized results.
 """
 from __future__ import annotations
-import numpy as np
-from typing import Callable, Any
 
-# R003: import statistical significance criteria
+from typing import Callable
+
+import numpy as np
+
 from analysis.statistical_significance import (
-    deflated_sharpe_ratio,
-    probabilistic_sharpe_ratio,
-    criterion_deflated_sharpe as _dsr_fn,
-    criterion_psr as _psr_fn,
     criterion_deflated_complex as _deflated_complex_fn,
 )
+from analysis.statistical_significance import (
+    criterion_deflated_sharpe as _dsr_fn,
+)
+from analysis.statistical_significance import (
+    criterion_psr as _psr_fn,
+)
+
+# R003: import statistical significance criteria
 
 # Reference normalization scales
 SHARPE_REF = 2.0       # 2.0 Sharpe = 100% on this component

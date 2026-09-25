@@ -18,16 +18,18 @@ Usage:
     state = bridge.get_state()
 """
 from __future__ import annotations
+
+import json
 import time
 import uuid
-import json
 from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable, Any
-import pandas as pd
+from typing import Optional
+
 import numpy as np
+import pandas as pd
 
 
 # Order state enum

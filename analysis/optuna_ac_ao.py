@@ -10,24 +10,28 @@ min_acceleration, use_ao_synchronization, min_ao_synchronization) per ticker.
 Plus: add MTF filter on top (which was the best filter for NAS).
 """
 from __future__ import annotations
+
 import sys
 import warnings
+
 warnings.filterwarnings("ignore")
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import pandas as pd
-import numpy as np
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 import MetaTrader5 as mt5
-from data.mt5_export import init_mt5
+
 from backtester.engine_full import run_full
 from backtester.grid_recovery import GRID_NONE
 from backtester.metrics_v2 import compute_all
+from data.mt5_export import init_mt5
+from strategies._enhancement import EnhancedStrategy, mtf_trend
 from strategies.ac_ao import AC_AO_Strategy
-from strategies._enhancement import EnhancedStrategy, mtf_trend, session_filter
 
 
 def fetch_h1(terminal, symbol, n_bars=20000):
@@ -151,19 +155,19 @@ def main():
 
     e = run_with_params(eur_oos, eur_params, "forex")
     n = run_with_params(nas_oos, nas_params, "nas100")
-    print(f"\n  EURUSD optimized (12mo OOS):")
+    print("\n  EURUSD optimized (12mo OOS):")
     print(f"    PnL ${e['net_pnl']:+,.0f} | Sharpe {e['sharpe']:+.2f} | "
           f"WR {e['win_rate']*100:.0f}% | PF {e['profit_factor']:.2f} | "
           f"DD {e['max_dd']*100:+.1f}% | {e['n_trades']} trades")
     print(f"    params: {eur_params}")
-    print(f"\n  NAS100 optimized (12mo OOS):")
+    print("\n  NAS100 optimized (12mo OOS):")
     print(f"    PnL ${n['net_pnl']:+,.0f} | Sharpe {n['sharpe']:+.2f} | "
           f"WR {n['win_rate']*100:.0f}% | PF {n['profit_factor']:.2f} | "
           f"DD {n['max_dd']*100:+.1f}% | {n['n_trades']} trades")
     print(f"    params: {nas_params}")
 
     # Compare with baselines
-    print(f"\n  BASELINE comparison (from earlier):")
+    print("\n  BASELINE comparison (from earlier):")
     print(f"    EUR: +$339 / +0.81 Sharpe (7 trades) — OPTIMIZED: ${e['net_pnl']:+,.0f} / {e['sharpe']:+.2f}")
     print(f"    NAS: -$1,099 / -0.64 Sharpe (667 trades) — OPTIMIZED: ${n['net_pnl']:+,.0f} / {n['sharpe']:+.2f}")
 
@@ -171,7 +175,7 @@ def main():
     import json
     with open("output/ac_ao_best_params.json", "w") as f:
         json.dump({"eur": eur_params, "nas": nas_params}, f, indent=2)
-    print(f"\nSaved → output/ac_ao_best_params.json")
+    print("\nSaved → output/ac_ao_best_params.json")
 
 
 if __name__ == "__main__":

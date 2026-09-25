@@ -3,10 +3,10 @@
 Loads broker config from config/brokers.json, applies exact fee schedule per symbol.
 """
 from __future__ import annotations
-from dataclasses import dataclass, asdict
-from pathlib import Path
-import json
 
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 BROKER_PATH = Path(__file__).parent.parent / "config" / "brokers.json"
 

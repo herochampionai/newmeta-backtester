@@ -2,10 +2,11 @@
 Includes MTF Averaged ADX, Divergence-Confirmed 3-Push Exhaustion Guard, RVOL Surge Filter, and Adaptive Corridors.
 """
 from __future__ import annotations
+
 import pandas as pd
-import numpy as np
+
 from .._base import BaseStrategy, Signals
-from ..indicators import adx, rsi, stochastic, bollinger, macd
+from ..indicators import adx, rsi
 
 
 def _as_bool(val, default: bool = False) -> bool:
@@ -127,7 +128,7 @@ class Light9Strategy(BaseStrategy):
 
         if use_session_adx1:
             adx_val, _, _ = adx(df["high"], df["low"], df["close"], adx_period)
-            
+
             # MTF Averaged ADX (2026 Feature)
             if _as_bool(p.get("Use_MTF_Averaged_ADX", True)):
                 adx_htf = adx_val.rolling(5, min_periods=1).mean()

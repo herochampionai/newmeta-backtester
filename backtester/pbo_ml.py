@@ -4,11 +4,9 @@ PBO: combinatorial probability of backtest overfitting across all train/test spl
 Regime: HMM on returns + RVOL/ADV features for market state attribution.
 """
 from __future__ import annotations
-import math
+
 import numpy as np
 import pandas as pd
-from itertools import combinations
-from typing import Any
 
 
 def pbo_full(trials_df: pd.DataFrame, metric: str = "score",

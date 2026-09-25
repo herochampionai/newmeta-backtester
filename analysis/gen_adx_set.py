@@ -5,9 +5,12 @@ Per your instruction: lock ADX settings AS-IS, generate MQL5-ready .set files
 for both EURUSD and NAS100 profiles.
 """
 import warnings; warnings.filterwarnings('ignore')
-import sys, json
+import json
+import sys
+
 sys.path.insert(0, '.')
 from pathlib import Path
+
 import pandas as pd
 
 from analysis.optuna_filters import fetch_h1
@@ -46,10 +49,10 @@ def gen_adx_set_file(params: dict, ticker: str, profile_meta: dict, output_path:
     """
     lines = []
     lines.append(f"; ADX_{ticker} — LOCKED PRODUCTION PROFILE")
-    lines.append(f"; Strategy: ADX (Average Directional Index + DI crossovers + zone logic)")
+    lines.append("; Strategy: ADX (Average Directional Index + DI crossovers + zone logic)")
     lines.append(f"; Ticker: {ticker}")
-    lines.append(f"; Timeframe: H1")
-    lines.append(f"; Validated: 2-year OOS (2024-09-17 → 2026-09-17)")
+    lines.append("; Timeframe: H1")
+    lines.append("; Validated: 2-year OOS (2024-09-17 → 2026-09-17)")
     lines.append(f"; Net PnL: ${profile_meta.get('metrics', {}).get('net_pnl', 0):+,.0f}")
     lines.append(f"; Sharpe: {profile_meta.get('metrics', {}).get('sharpe', 0):+.2f}")
     lines.append(f"; WR: {profile_meta.get('metrics', {}).get('win_rate', 0)*100:.1f}%")

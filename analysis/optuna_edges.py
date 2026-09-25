@@ -1,14 +1,21 @@
 """Optuna-tune the 6 edges with ROBUST objective."""
 import warnings; warnings.filterwarnings('ignore')
-import sys, json, math
+import json
+import sys
+
 sys.path.insert(0, '.')
-import pandas as pd
 import optuna
+import pandas as pd
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 from analysis.optuna_filters import run_strategy
 from strategies.edges_2026 import (
-    LiquiditySweepStrategy, VolatilityRegimeStrategy, SessionBasedStrategy,
-    MarketStructureStrategy, SynthOrderFlowStrategy, EnsembleStrategy
+    EnsembleStrategy,
+    LiquiditySweepStrategy,
+    MarketStructureStrategy,
+    SessionBasedStrategy,
+    SynthOrderFlowStrategy,
+    VolatilityRegimeStrategy,
 )
 
 eur = pd.read_csv('output/mt5_EURUSD_H1_2022_2026.csv', index_col='time', parse_dates=True)
