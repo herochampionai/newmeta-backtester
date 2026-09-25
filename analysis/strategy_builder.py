@@ -272,12 +272,22 @@ def generate_code(class_name: str, clauses: list, params: dict) -> str:
             var_defs.append((f"_v{len(var_defs)}", code))
         return next(v for v, c in var_defs if c == code)
 
+    def _is_num(expr: str) -> bool:
+        try:
+            float(expr)
+            return True
+        except (ValueError, TypeError):
+            return False
+
     clause_masks = []  # (side, mask_expr)
     for ci, cl in enumerate(clauses):
         parts = []
         for cond in cl.conditions:
-            lv = _var_for(cond.left)
-            rv = _var_for(cond.right)
+            # Numeric levels stay inline: wrapping them in _v vars hides the
+            # literal from Condition._is_number, which then emits .shift(1)
+            # on a float (AttributeError at generate time).
+            lv = cond.left if _is_num(cond.left) else _var_for(cond.left)
+            rv = cond.right if _is_num(cond.right) else _var_for(cond.right)
             c2 = Condition(lv, cond.op, rv)
             parts.append(c2.to_code(f"m{ci}"))
         clause_masks.append((cl.side, " & ".join(f"({p})" for p in parts)))
