@@ -10,7 +10,8 @@ Checks (defaults):
   enough_trades   trades >= min_trades (30)
   sharpe_floor    sharpe >= min_sharpe (0.3)
   walkforward     verdict == ACCEPT, or pass_ratio >= min_wf_pass_ratio (0.5)
-  significance    PSR verdict in {STRONG} or DSR verdict in {STRONG} (*)
+  significance    PSR verdict STRONG or DSR verdict STRONG or bootstrap
+                    verdict STRONG (*)
   stress          verdict != FRAGILE
   drawdown_cap    |max_drawdown| <= max_dd (0.25)
 
@@ -35,6 +36,7 @@ DEFAULTS = {
     "accept_wf_verdicts": ("ACCEPT", "ROBUST"),
     "accept_psr_verdicts": ("STRONG",),
     "accept_dsr_verdicts": ("STRONG",),
+    "accept_perm_verdicts": ("STRONG",),
     "forbid_stress_verdicts": ("FRAGILE",),
 }
 
@@ -42,6 +44,7 @@ DEFAULTS = {
 def review(backtest_metrics: dict | None = None, wf_verdict: str = "UNKNOWN",
            wf_passed: int = 0, wf_windows: int = 0,
            psr_verdict: str = "UNKNOWN", dsr_verdict: str = "UNKNOWN",
+           perm_verdict: str = "UNKNOWN",
            stress_verdict: str = "UNKNOWN", trades: int = 0,
            **overrides) -> dict:
     """Evaluate all checks. Returns {pass, reasons, checks}."""
@@ -69,8 +72,10 @@ def review(backtest_metrics: dict | None = None, wf_verdict: str = "UNKNOWN",
          f"verdict={wf_verdict} passed={wf_passed}/{wf_windows}")
 
     sig_ok = (psr_verdict in cfg["accept_psr_verdicts"]
-              or dsr_verdict in cfg["accept_dsr_verdicts"])
-    _add("significance", sig_ok, f"PSR={psr_verdict} DSR={dsr_verdict}")
+              or dsr_verdict in cfg["accept_dsr_verdicts"]
+              or perm_verdict in cfg["accept_perm_verdicts"])
+    _add("significance", sig_ok,
+         f"PSR={psr_verdict} DSR={dsr_verdict} BOOT={perm_verdict}")
 
     _add("stress", stress_verdict not in cfg["forbid_stress_verdicts"],
          f"stress={stress_verdict}")
@@ -116,4 +121,14 @@ if __name__ == "__main__":
                   stress_verdict="ROBUST", trades=5)
     assert not thin["pass"] and any("enough_trades" in r for r in thin["reasons"])
     print("thin-data correctly rejected")
+
+    # Bootstrap-only evidence carries the significance leg.
+    boot_only = review(
+        backtest_metrics={"net_pnl": 300.0, "sharpe": 0.6, "max_drawdown": -0.04},
+        wf_verdict="ACCEPT", wf_passed=6, wf_windows=8,
+        psr_verdict="POOR", dsr_verdict="WEAK", perm_verdict="STRONG",
+        stress_verdict="ROBUST", trades=80)
+    assert boot_only["checks"]["significance"]["pass"], boot_only["checks"]
+    assert boot_only["pass"], boot_only["reasons"]
+    print("bootstrap-only significance accepted")
     print("SELF-TEST PASS")

@@ -398,6 +398,7 @@ def permutation(symbol: str = "EURUSD", timeframe: str = "H1", strategy: str = "
 def review_gate(backtest_json: str, wf_verdict: str = "UNKNOWN",
                 wf_passed: int = 0, wf_windows: int = 0,
                 psr_verdict: str = "UNKNOWN", dsr_verdict: str = "UNKNOWN",
+                perm_verdict: str = "UNKNOWN",
                 stress_verdict: str = "UNKNOWN", trades: int = 0) -> dict:
     """Independent PASS/FAIL before paper. backtest_json: {net_pnl, sharpe,
     max_drawdown}. Returns pass flag with named reasons. Instant."""
@@ -406,6 +407,7 @@ def review_gate(backtest_json: str, wf_verdict: str = "UNKNOWN",
     return _clean(review(backtest_metrics=metrics, wf_verdict=wf_verdict,
                          wf_passed=wf_passed, wf_windows=wf_windows,
                          psr_verdict=psr_verdict, dsr_verdict=dsr_verdict,
+                         perm_verdict=perm_verdict,
                          stress_verdict=stress_verdict, trades=trades))
 
 

@@ -741,6 +741,7 @@ def run_pipeline(args) -> int:
         wf_windows=_wf.get("windows", 0),
         psr_verdict=_sg.get("psr_verdict", "UNKNOWN"),
         dsr_verdict=_sg.get("dsr_verdict", "UNKNOWN"),
+        perm_verdict=_sg.get("permutation_verdict", "UNKNOWN"),
         stress_verdict=_st.get("verdict", "UNKNOWN"),
         trades=len(trades))
     print(f"  Gate: {'PASS' if _gate['pass'] else 'FAIL'} ({_gate['summary']})")

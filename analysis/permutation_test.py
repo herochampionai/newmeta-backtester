@@ -28,10 +28,10 @@ import time
 
 @dataclass
 class PermutationReport:
-    """Reshuffle test outcome."""
+    """Bootstrap significance outcome (resampling with replacement)."""
     p_value: float
     observed_sharpe: float
-    mean_shuffled_sharpe: float
+    mean_shuffled_sharpe: float  # mean bootstrap Sharpe (sanity: ~= observed)
     n_permutations: int
     n_trades: int
     elapsed_sec: float = 0.0
@@ -89,14 +89,18 @@ def permutation_pvalue(trade_pnls, n_permutations: int = 5000,
     obs = _sharpe_from_pnls(x, periods_per_year)
     rng = np.random.default_rng(seed)
     beats = 0
+    boot_sum = 0.0
     for _ in range(n_permutations):
         sample = rng.choice(x, size=len(x), replace=True)
-        if _sharpe_from_pnls(sample, periods_per_year) <= 0:
+        s = _sharpe_from_pnls(sample, periods_per_year)
+        boot_sum += s
+        if s <= 0:
             beats += 1
     # Add-one smoothing so p is never exactly 0 (honest with finite draws).
     p = (beats + 1) / (n_permutations + 1)
     rep = PermutationReport(p_value=round(p, 4), observed_sharpe=round(obs, 4),
-                            mean_shuffled_sharpe=0.0, n_permutations=n_permutations,
+                            mean_shuffled_sharpe=round(boot_sum / n_permutations, 4),
+                            n_permutations=n_permutations,
                             n_trades=len(x), elapsed_sec=round(time.time() - t0, 1))
     if verbose:
         print(f"  bootstrap: p={p:.4f} [{rep.verdict()}] "
@@ -120,4 +124,8 @@ if __name__ == "__main__":
     r2 = permutation_pvalue(noise, n_permutations=1000, verbose=True)
     assert r2.p_value > 0.05, r2.p_value
     assert r2.verdict() == "NO_EVIDENCE"
+
+    # Mean bootstrap Sharpe tracks the observed (sanity on the new field).
+    assert abs(r1.mean_shuffled_sharpe - r1.observed_sharpe) < 0.15, r1.mean_shuffled_sharpe
+    assert abs(r2.mean_shuffled_sharpe) < 0.15, r2.mean_shuffled_sharpe
     print("SELF-TEST PASS")
