@@ -78,8 +78,7 @@ def _backtest_df(df, strategy: str, params: dict, capital: float, symbol: str,
     from backtester.engine_full import run_full
     strat = rp._make_strategy(strategy, params)
     sig = strat.generate(df)
-    r = run_full(df, {strategy: (sig.entries.values.astype(int),
-                                 sig.exits.values.astype(int))},
+    r = run_full(df, {strategy: rp._sig_tuple(sig)},
                  init_cash=capital, **_exec(df, symbol, slippage_pips, spread_pips),
                  strict_data=False)
     return r.get("metrics", {}), r.get("trades", pd.DataFrame())

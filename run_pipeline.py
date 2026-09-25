@@ -388,8 +388,7 @@ def run_pipeline(args) -> int:
         strat = _make_strategy(args.strategy, params)
         sg = strat.generate(df)
         r = run_full(df,
-                     {args.strategy: (sg.entries.values.astype(int),
-                                      sg.exits.values.astype(int))},
+                     {args.strategy: _sig_tuple(sg)},
                      init_cash=args.capital, **_exec_kwargs(df, args),
                      strict_data=False)
         return (r.get("metrics", {}), r.get("trades", pd.DataFrame()),
@@ -413,8 +412,7 @@ def run_pipeline(args) -> int:
             _s = _make_strategy(args.strategy, _p)
             _sg = _s.generate(_d)
             _r = run_full(_d,
-                          {args.strategy: (_sg.entries.values.astype(int),
-                                           _sg.exits.values.astype(int))},
+                          {args.strategy: _sig_tuple(_sg)},
                           init_cash=args.capital, **_exec_kwargs(_d, args),
                           strict_data=False)
             _m = _r.get("metrics", {})
@@ -458,7 +456,7 @@ def run_pipeline(args) -> int:
         s = _make_strategy(args.strategy, p)
         sg = s.generate(df)
         return run_full(df,
-                        {args.strategy: (sg.entries.values.astype(int), sg.exits.values.astype(int))},
+                        {args.strategy: _sig_tuple(sg)},
                         init_cash=args.capital, **_exec_kwargs(df, args),
                         strict_data=False
                         ).get("metrics", {}).get("sharpe", 0)
@@ -661,8 +659,7 @@ def run_pipeline(args) -> int:
                 st = _make_strategy(args.strategy, p)
                 sg = st.generate(d)
                 return run_full(d,
-                                {args.strategy: (sg.entries.values.astype(int),
-                                                 sg.exits.values.astype(int))},
+                                {args.strategy: _sig_tuple(sg)},
                                 init_cash=args.capital, **_exec_kwargs(d, args),
                                 strict_data=False).get("metrics", {})
             return fn
@@ -838,6 +835,20 @@ Examples:
         return 0
 
     return run_pipeline(args)
+
+
+def _sig_tuple(sg):
+    """3-tuple (entries, exits, direction) — the engine's lossless path.
+
+    run_pure reads a 2-tuple as (entries, DIRECTION); passing exits second
+    silently feeds exits as direction (every direction-aware strategy
+    backtested as open-once-hold-forever). Always pass all three.
+    """
+    import pandas as pd
+    ent = sg.entries.values.astype(int)
+    ext = sg.exits.values.astype(int)
+    d = pd.Series(sg.direction).fillna(0).values.astype(int)
+    return (ent, ext, d)
 
 
 if __name__ == "__main__":

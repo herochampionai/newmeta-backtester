@@ -103,8 +103,9 @@ def _screen_cell(job: tuple) -> dict:
                        and v is not BaseStrategy)
             strat = cls(name=strategy_name, params=params)
         sig = strat.generate(df)
-        r = run_full(df, {strategy_name: (sig.entries.values.astype(int),
-                                          sig.exits.values.astype(int))},
+        tup = (sig.entries.values.astype(int), sig.exits.values.astype(int),
+               pd.Series(sig.direction).fillna(0).values.astype(int))
+        r = run_full(df, {strategy_name: tup},
                      init_cash=capital, strict_data=False, **exec_cfg)
         m = r.get("metrics", {})
         trades = r.get("trades", pd.DataFrame())
